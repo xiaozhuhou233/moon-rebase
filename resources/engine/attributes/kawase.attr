@@ -1,0 +1,11 @@
+path("")
+data([
+    position {
+        size = 2,
+        dataType = FLOAT
+    },
+    texCoord {
+        size = 2,
+        dataType = FLOAT
+    },
+])

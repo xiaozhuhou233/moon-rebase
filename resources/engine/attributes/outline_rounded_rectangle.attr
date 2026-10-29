@@ -1,0 +1,31 @@
+path("")
+data([
+    position {
+        size = 2,
+        dataType = FLOAT
+    },
+    size {
+        size = 2,
+        dataType = FLOAT
+    },
+    screenSize {
+        size = 2,
+        dataType = FLOAT
+    },
+    origin {
+        size = 2,
+        dataType = FLOAT
+    },
+    radius {
+        size = 1,
+        dataType = FLOAT
+    },
+    thickness {
+        size = 1,
+        dataType = FLOAT
+    },
+    color {
+        size = 4,
+        dataType = FLOAT
+    },
+])

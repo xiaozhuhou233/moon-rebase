@@ -15,6 +15,22 @@ This project aims to provide a modern rendering backend for Minecraft 1.8.9 by i
 
 ---
 
+## Lua runtime
+
+The client includes a LuaJ 3.0.1 loader for Moon-style scripts. See
+[`LUA_LOADER.md`](LUA_LOADER.md) for the supported API, packet callbacks,
+sandbox rules and the `.lua` chat commands.
+
+Scripts are loaded from `run/scripts` (or `.minecraft/scripts` in a normal
+installation). `run/` is a local runtime directory and is not committed.
+
+## Recovered visual modules
+
+`src/moon` contains recovered Nightly visual code and adapters for the MCP
+client: ModelModifier, TargetHUD, HUD watermark modes, ClickGUI styles and
+the shadow/blur settings. The readable, standalone reference implementation
+is distributed separately from this repository.
+
 ## Getting Started
 
 

@@ -121,7 +121,6 @@ public class EntityPlayerSP extends AbstractClientPlayer {
 	 */
 	@Override
 	public void onUpdate() {
-		dev.pier.lua.LuaManager.get().onUpdate(this, true);
 		if (this.worldObj.isBlockLoaded(new BlockPos(this.posX, 0.0D, this.posZ))) {
 			moon.client.McpModuleServices.playerBeforeUpdate(this);
 			moon.client.McpVisualServices.playerMotionPhase(this);
@@ -131,7 +130,6 @@ public class EntityPlayerSP extends AbstractClientPlayer {
 				this.sendQueue.addToSendQueue(new C0CPacketInput(this.moveStrafing, this.moveForward, this.movementInput.jump, this.movementInput.sneak));
 			} else this.onUpdateWalkingPlayer();
 		}
-		dev.pier.lua.LuaManager.get().onUpdate(this, false);
 	}
 
 	/**
@@ -140,7 +138,12 @@ public class EntityPlayerSP extends AbstractClientPlayer {
 	 */
 	public void onUpdateWalkingPlayer() {
 		moon.client.McpVisualServices.playerMotionPhase(this);
-		final moon.client.McpModuleServices.Motion moonMotion = moon.client.McpModuleServices.walkingPre(this);
+		final moon.client.McpModuleServices.Motion nativeMotion = moon.client.McpModuleServices.walkingPre(this);
+        final org.luaj.vm2.LuaTable luaMotion=dev.pier.lua.LuaManager.get().motionUpdate(this,true,nativeMotion);
+        final double luaX=luaMotion.get("x").checkdouble(),luaZ=luaMotion.get("z").checkdouble();
+        final moon.client.McpModuleServices.Motion moonMotion=new moon.client.McpModuleServices.Motion(
+            (float)luaMotion.get("yaw").checkdouble(),(float)luaMotion.get("pitch").checkdouble(),
+            luaMotion.get("y").checkdouble(),luaMotion.get("ground").checkboolean());
 		try {
 		final boolean flag = this.isSprinting();
 		if (mc.gameSettings.keyBindAttack.isKeyDown() && mc.thePlayer.isUsingItem() && Settings.OLD_ANIMATIONS)
@@ -157,27 +160,27 @@ public class EntityPlayerSP extends AbstractClientPlayer {
 			this.serverSneakState = flag1;
 		}
 		if (this.isCurrentViewEntity()) {
-			final double d0 = this.posX - this.lastReportedPosX;
-			final double d1 = this.getEntityBoundingBox().minY - this.lastReportedPosY;
-			final double d2 = this.posZ - this.lastReportedPosZ;
+			final double d0 = luaX - this.lastReportedPosX;
+			final double d1 = moonMotion.y() - this.lastReportedPosY;
+			final double d2 = luaZ - this.lastReportedPosZ;
 			final double d3 = moonMotion.yaw() - this.lastReportedYaw;
 			final double d4 = moonMotion.pitch() - this.lastReportedPitch;
 			boolean flag2 = d0 * d0 + d1 * d1 + d2 * d2 > 9.0E-4D || this.positionUpdateTicks >= 20;
 			final boolean flag3 = d3 != 0.0D || d4 != 0.0D;
 			if (this.ridingEntity == null) {
-				if (flag2 && flag3) this.sendQueue.addToSendQueue(new C03PacketPlayer.C06PacketPlayerPosLook(this.posX, this.getEntityBoundingBox().minY, this.posZ, moonMotion.yaw(), moonMotion.pitch(), this.onGround));
-				else if (flag2) this.sendQueue.addToSendQueue(new C03PacketPlayer.C04PacketPlayerPosition(this.posX, this.getEntityBoundingBox().minY, this.posZ, this.onGround));
-				else if (flag3) this.sendQueue.addToSendQueue(new C03PacketPlayer.C05PacketPlayerLook(moonMotion.yaw(), moonMotion.pitch(), this.onGround));
-				else this.sendQueue.addToSendQueue(new C03PacketPlayer(this.onGround));
+				if (flag2 && flag3) this.sendQueue.addToSendQueue(new C03PacketPlayer.C06PacketPlayerPosLook(luaX, moonMotion.y(), luaZ, moonMotion.yaw(), moonMotion.pitch(), moonMotion.onGround()));
+				else if (flag2) this.sendQueue.addToSendQueue(new C03PacketPlayer.C04PacketPlayerPosition(luaX, moonMotion.y(), luaZ, moonMotion.onGround()));
+				else if (flag3) this.sendQueue.addToSendQueue(new C03PacketPlayer.C05PacketPlayerLook(moonMotion.yaw(), moonMotion.pitch(), moonMotion.onGround()));
+				else this.sendQueue.addToSendQueue(new C03PacketPlayer(moonMotion.onGround()));
 			} else {
-				this.sendQueue.addToSendQueue(new C03PacketPlayer.C06PacketPlayerPosLook(this.motionX, -999.0D, this.motionZ, moonMotion.yaw(), moonMotion.pitch(), this.onGround));
+				this.sendQueue.addToSendQueue(new C03PacketPlayer.C06PacketPlayerPosLook(this.motionX, -999.0D, this.motionZ, moonMotion.yaw(), moonMotion.pitch(), moonMotion.onGround()));
 				flag2 = false;
 			}
 			++this.positionUpdateTicks;
 			if (flag2) {
-				this.lastReportedPosX = this.posX;
-				this.lastReportedPosY = this.getEntityBoundingBox().minY;
-				this.lastReportedPosZ = this.posZ;
+				this.lastReportedPosX = luaX;
+				this.lastReportedPosY = moonMotion.y();
+				this.lastReportedPosZ = luaZ;
 				this.positionUpdateTicks = 0;
 			}
 			if (flag3) {
@@ -185,7 +188,7 @@ public class EntityPlayerSP extends AbstractClientPlayer {
 				this.lastReportedPitch = moonMotion.pitch();
 			}
 		}
-		} finally { moon.client.McpModuleServices.walkingPost(this); moon.client.McpVisualServices.playerMotionPhase(this); }
+		} finally { dev.pier.lua.LuaManager.get().motionUpdate(this,false,moonMotion); moon.client.McpModuleServices.walkingPost(this); moon.client.McpVisualServices.playerMotionPhase(this); }
 	}
 
 	/**
@@ -507,6 +510,7 @@ public class EntityPlayerSP extends AbstractClientPlayer {
 		final float f = 0.8F;
 		final boolean flag2 = this.movementInput.moveForward >= f;
 		this.movementInput.updatePlayerMoveState();
+        moon.client.McpModuleServices.playerAfterInput(this);
 		if (this.isUsingItem() && !this.isRiding()) {
 			this.movementInput.moveStrafe *= 0.2F;
 			this.movementInput.moveForward *= 0.2F;
@@ -517,11 +521,14 @@ public class EntityPlayerSP extends AbstractClientPlayer {
 		this.pushOutOfBlocks(this.posX + this.width * 0.35D, this.getEntityBoundingBox().minY + 0.5D, this.posZ - this.width * 0.35D);
 		this.pushOutOfBlocks(this.posX + this.width * 0.35D, this.getEntityBoundingBox().minY + 0.5D, this.posZ + this.width * 0.35D);
 		final boolean flag3 = this.getFoodStats().getFoodLevel() > 6.0F || this.capabilities.allowFlying;
-		if (this.onGround && !flag1 && !flag2 && this.movementInput.moveForward >= f && !this.isSprinting() && flag3 && !this.isUsingItem() && !this.isPotionActive(Potion.blindness))
-			if (this.sprintToggleTimer <= 0 && !this.mc.gameSettings.keyBindSprint.isKeyDown()) this.sprintToggleTimer = 7;
-			else this.setSprinting(true);
-		if (!this.isSprinting() && this.movementInput.moveForward >= f && flag3 && !this.isUsingItem() && !this.isPotionActive(Potion.blindness) && this.mc.gameSettings.keyBindSprint.isKeyDown()) this.setSprinting(true);
-		if (this.isSprinting() && (this.movementInput.moveForward < f || this.isCollidedHorizontally || !flag3)) this.setSprinting(false);
+		// Scaffold owns sprint while enabled; the vanilla sprint key/auto-sprint block would fight it.
+		if (!moon.client.McpModuleServices.moonOwnsSprint(this)) {
+			if (this.onGround && !flag1 && !flag2 && this.movementInput.moveForward >= f && !this.isSprinting() && flag3 && !this.isUsingItem() && !this.isPotionActive(Potion.blindness))
+				if (this.sprintToggleTimer <= 0 && !this.mc.gameSettings.keyBindSprint.isKeyDown()) this.sprintToggleTimer = 7;
+				else this.setSprinting(true);
+			if (!this.isSprinting() && this.movementInput.moveForward >= f && flag3 && !this.isUsingItem() && !this.isPotionActive(Potion.blindness) && this.mc.gameSettings.keyBindSprint.isKeyDown()) this.setSprinting(true);
+			if (this.isSprinting() && (this.movementInput.moveForward < f || this.isCollidedHorizontally || !flag3)) this.setSprinting(false);
+		}
 		if (this.capabilities.allowFlying) if (this.mc.playerController.isSpectatorMode()) {
 			if (!this.capabilities.isFlying) {
 				this.capabilities.isFlying = true;
@@ -561,11 +568,14 @@ public class EntityPlayerSP extends AbstractClientPlayer {
 		}
 	}
 
-    /** Scaffold fo MoveEvent changes requested displacement before vanilla collision handling. */
+    /** Clutch displacement is applied before vanilla collision handling. */
+    public boolean luaIsInWeb(){return isInWeb;}
     @Override public void moveEntity(double x,double y,double z) {
         Vec3 tower=moon.client.McpModuleServices.scaffoldMove(this,y);
-        if(tower==null)super.moveEntity(x,y,z);
-        else super.moveEntity(tower.xCoord,tower.yCoord,tower.zCoord);
+        if(tower!=null){x=tower.xCoord;y=tower.yCoord;z=tower.zCoord;}
+        double[] lua=dev.pier.lua.LuaManager.get().onMove(x,y,z);
+        moon.client.McpModuleServices.scaffoldPlace(this);
+        super.moveEntity(lua[0],lua[1],lua[2]);
     }
 
     /** Module motion yaw affects physics only inside this call; camera yaw is restored on failure. */

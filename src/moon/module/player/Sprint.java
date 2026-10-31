@@ -1,45 +1,39 @@
 package moon.module.player;
 
 import java.util.List;
-import java.util.Locale;
-import java.util.function.BooleanSupplier;
 import moon.module.NativeModule;
+import moon.module.player.sprint.SprintController;
 import moon.visual.gui.SettingValue;
 import moon.visual.shader.ShaderUniform.MarkerHooks;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.entity.EntityPlayerSP;
-import net.minecraft.client.multiplayer.ServerData;
-import net.minecraft.potion.Potion;
 
-/** Render-independent automatic sprint, adapted from the old PlayerMoveEvent module. */
+/**
+ * Automatic sprint, rebuilt around the shared {@link SprintController}.
+ *
+ * <p>The controller owns the sprint state while this module is enabled and leaves a
+ * recovery window after sprint attacks so KillAura's C02 attacks keep the
+ * vanilla slowdown.</p>
+ */
 public final class Sprint extends NativeModule {
     private final Minecraft mc;
-    private final BooleanSupplier scaffoldAllowsSprint,keepSprintWhileUsingItem;
+    private final SprintController controller;
 
-    public Sprint(Minecraft mc,MarkerHooks hooks,BooleanSupplier scaffoldAllowsSprint,
-                  BooleanSupplier keepSprintWhileUsingItem){
-        super("sprint","Sprint",Category.PLAYER);
-        this.mc=mc;this.scaffoldAllowsSprint=scaffoldAllowsSprint;this.keepSprintWhileUsingItem=keepSprintWhileUsingItem;
+    public Sprint(Minecraft mc, MarkerHooks hooks, SprintController controller) {
+        super("sprint", "Sprint", Category.PLAYER);
+        this.mc = mc;
+        this.controller = controller;
     }
-    @Override public List<? extends SettingValue<?>> settings(){return List.of();}
-    @Override public void worldChanged(){}
-    public boolean canSprint(){
-        EntityPlayerSP player=mc.thePlayer;if(player==null||mc.theWorld==null)return false;
-        boolean hypixel=false;ServerData server=mc.getCurrentServerData();
-        if(server!=null&&server.serverIP!=null)hypixel=server.serverIP.toLowerCase(Locale.ROOT).contains("hypixel");
-        boolean moving=player.movementInput!=null&&(player.movementInput.moveForward!=0||player.movementInput.moveStrafe!=0);
-        boolean enoughMovement=player.moveForward>=.8F||hypixel&&moving;
-        return enoughMovement&&!player.isCollidedHorizontally
-            &&(player.getFoodStats().getFoodLevel()>6||player.capabilities.allowFlying)
-            &&scaffoldAllowsSprint.getAsBoolean()&&!player.isSneaking()
-            &&(!player.isUsingItem()||keepSprintWhileUsingItem.getAsBoolean())
-            &&!player.isPotionActive(Potion.blindness)&&!player.isPotionActive(Potion.moveSlowdown);
+
+    @Override public List<? extends SettingValue<?>> settings() { return List.of(); }
+    @Override public void worldChanged() { controller.reset(); }
+
+    /** Called after the live movement input update, before movement. */
+    public void afterInput() {
+        if (!enabled() || mc.thePlayer == null) return;
+        controller.update(true, mc.thePlayer.rotationYaw);
     }
-    public void updateSprint(){
-        EntityPlayerSP player=mc.thePlayer;if(player!=null)player.setSprinting(enabled()&&canSprint());
-    }
-    @Override protected void onDisable(){
-        EntityPlayerSP player=mc.thePlayer;
-        if(player!=null)player.setSprinting(mc.gameSettings.keyBindSprint.isKeyDown());
+
+    @Override protected void onDisable() {
+        controller.releaseControl();
     }
 }

@@ -9,13 +9,18 @@ public final class KillAuraTargetSelector {
             float health, boolean invisible, boolean rejected, boolean preferred) { }
     public record Player(double x, double y, double z, float eyeHeight, float yaw, float pitch) { }
     public Target select(Player player, Collection<Target> entities, KillAuraSettings settings) {
+        return select(player,entities,settings,settings.aimReach.get());
+    }
+    public Target select(Player player,Collection<Target> entities,KillAuraSettings settings,float scanRange){
         List<Target> eligible = new ArrayList<>();
-        float reach = Math.max(settings.aimReach.get(), settings.reach.get());
+        float reach = Math.max(scanRange, settings.reach.get());
         for (Target entity : entities) {
             if (entity.rejected() || !settings.targets.isSelected(entity.kind())) continue;
             if (entity.invisible() && !settings.targets.isSelected(TargetKind.INVISIBLES)) continue;
             if (distance(player, entity) <= reach) eligible.add(entity);
         }
+        double halfFov=settings.fov.get()*.5D;
+        eligible.removeIf(entity->fov(player,entity)>halfFov);
         // e2 checks for any priority target before applying the selected comparator.
         if (eligible.stream().anyMatch(Target::preferred)) eligible.removeIf(t -> !t.preferred());
         Comparator<Target> comparator = switch (settings.sorting.get()) {

@@ -80,7 +80,7 @@ public final class McpVisualEvents {
             if(pre&&current!=null)current.overlayPre.accept(partialTicks);
             if(!pre&&current!=null)current.overlayPostPrepare.run();
             // jM HIGH POST precedes jP LOWEST; scripts use the ordinary-priority slot.
-            if(!pre&&current!=null&&current.effectsEnabled.getAsBoolean())current.effects.onHudOverlay(event);
+            if(!pre){McpLuaRenderer.beginEffectFrame();if(current!=null&&current.effectsEnabled.getAsBoolean())current.effects.onHudOverlay(event);McpLuaRenderer.flushEffectText();}
             scripts.overlay(partialTicks,pre);
             if(current!=null&&current.hudEnabled.getAsBoolean())current.hud.onHudOverlay(event);
             if(!pre&&current!=null)current.overlayPostDraw.run();

@@ -33,11 +33,11 @@ public final class KillAuraSettings {
         HURT_TIME, ATTACK_SYNC, OPTIMIZED, FAKE, HOLD;
         public String displayName() { return name(); }
     }
-    public final FloatSetting aimReach, reach, rotationSpeed, circularSpeed, randomizationAmount;
+    public final FloatSetting aimReach, reach, fov, rotationSpeed, circularSpeed, randomizationAmount;
     public final IntegerSetting cps;
     public final BooleanSetting velocityAttackSync, rotate, correctMovement, silentlyCorrect,
         onlyRotateWhenNeeded, dontRotateInHitbox, preventBackSnap, doubleClicks,
-        balancedDeviation, forceClickOnTickbase, realClick, ignoreBlocking, autoBlock,
+        balancedDeviation, forceClickOnTickbase, realClick, ignoreBlocking, stopSprintOnAttack, autoBlock,
         clickAutoBlock, unblockOnAttack, aggressive;
     public final MultiChoiceSetting<TargetKind> targets;
     public final MultiChoiceSetting<Randomization> randomization;
@@ -50,6 +50,7 @@ public final class KillAuraSettings {
     public KillAuraSettings(MarkerHooks hooks) {
         aimReach = number(hooks, "aim-reach", "Aiming Reach", 3, 3, 7, .1F);
         reach = number(hooks, "reach", "Attack Reach", 3, 3, 6, .1F);
+        fov = number(hooks, "fov", "FOV", 360, 0, 360, 1);
         cps = IntegerSetting.builder("cps", hooks).configure("CPS", 8, 1, 20, 1).build();
         velocityAttackSync = flag(hooks, "velocity-attack-sync", "Attack sync with velocity", false);
         targets = MultiChoiceSetting.builder("targets", TargetKind.class, hooks).configure("Targets", TargetKind.PLAYERS).build();
@@ -72,6 +73,7 @@ public final class KillAuraSettings {
         forceClickOnTickbase = flag(hooks, "force-click-on-tickbase", "Force click on tick-base", true);
         realClick = flag(hooks, "real-click", "Real click", false);
         ignoreBlocking = BooleanSetting.builder("ignore-blocking", hooks).configure("Ignore blocking", false).visibility(realClick::get).build();
+        stopSprintOnAttack = flag(hooks, "stop-sprint-on-attack", "Stop sprint on attack", false);
         autoBlock = flag(hooks, "auto-block", "Auto block", false);
         clickAutoBlock = flag(hooks, "click-auto-block", "Click auto block", false);
         unblockOnAttack = flag(hooks, "unblock-on-attack", "Unblock on attack", true);
@@ -82,11 +84,11 @@ public final class KillAuraSettings {
         aggressive = BooleanSetting.builder("wd-ab-aggressive", hooks).configure("Aggressive", false)
             .visibility(() -> autoBlock.get() && !clickAutoBlock.get() && blockMode.get() == BlockMode.WATCHDOG).build();
         roots = List.of(aimReach, reach, cps,
-            SettingGroup.builder(hooks).configure("Target Settings", targets, sorting).build(),
+            SettingGroup.builder(hooks).configure("Target Settings", targets, sorting, fov).build(),
             SettingGroup.builder(hooks).configure("Rotation Settings", rotate, correctMovement, silentlyCorrect, rotationSpeed,
                 preventBackSnap, onlyRotateWhenNeeded, dontRotateInHitbox, randomization, randomizationAmount, circularSpeed).build(),
             SettingGroup.builder(hooks).configure("Attack Settings", clickPattern, doubleClicks, balancedDeviation, forceClickOnTickbase,
-                velocityAttackSync, realClick, ignoreBlocking, autoBlock, clickAutoBlock, unblockOnAttack, blockMode, clickBlockMode, aggressive).build());
+                velocityAttackSync, realClick, ignoreBlocking, stopSprintOnAttack, autoBlock, clickAutoBlock, unblockOnAttack, blockMode, clickBlockMode, aggressive).build());
     }
     public List<SettingValue<?>> roots() { return roots; }
     private static FloatSetting number(MarkerHooks h, String k, String n, float v, float min, float max, float step) {

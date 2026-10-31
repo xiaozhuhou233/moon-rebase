@@ -18,6 +18,7 @@ final class McpLuaModules {
         List<LuaModule> current=LuaManager.get().getModulesSnapshot();List<ModuleRowWidget.Module> next=new ArrayList<>();
         boolean changed=false;
         for(LuaModule source:current){
+            if(source.getName().equalsIgnoreCase("scaffoldlua"))continue;
             Module module=cached.computeIfAbsent(source,Module::new);changed|=module.refresh();next.add(module);
         }
         changed|=!next.equals(output);output.clear();output.addAll(next);cached.keySet().retainAll(current);return changed;

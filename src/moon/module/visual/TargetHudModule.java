@@ -16,7 +16,6 @@ import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.ResourceLocation;
 import org.lwjglx.util.vector.Matrix4f;
-import org.lwjglx.util.vector.Vector3f;
 
 /** jS/ga/gb: player target, Moon layout, rounded skin, health easing and masks.
  * gb constants recovered from static DATA seed 118689157411510; health uses
@@ -42,7 +41,8 @@ public final class TargetHudModule implements ModuleRowWidget.Module {
     public static final long TRANSITION_MILLIS = 450;
     private static final int BASE_COLOR = 0xff000000, TRACK_COLOR = 0x80000000;
     private static final String HEALTH_SUFFIX = " HP";
-    public static final float MOON_WIDTH = 125, MOON_HEIGHT = 50, BASIC_HEIGHT = 40, RADIUS = 8;
+    public static final float MOON_MIN_WIDTH = 110, MOON_HEIGHT = 40;
+    public static final float BASIC_WIDTH = 125, BASIC_HEIGHT = 50, RADIUS = 8;
 
     private final Minecraft mc;
     private final Supplier<EntityLivingBase> target;
@@ -59,7 +59,7 @@ public final class TargetHudModule implements ModuleRowWidget.Module {
     private boolean enabled, showing, dragging, drawable;
     private EntityPlayer displayed;
     private Object world;
-    private float left, top, width = MOON_WIDTH, height = MOON_HEIGHT, scale, dragX, dragY;
+    private float left, top, width = MOON_MIN_WIDTH, height = MOON_HEIGHT, scale, dragX, dragY;
     private String name = "", healthText = "";
     private int accent;
     private ResourceLocation skin;
@@ -71,7 +71,7 @@ public final class TargetHudModule implements ModuleRowWidget.Module {
         this.hud = Objects.requireNonNull(hud);
         this.rendering = Objects.requireNonNull(rendering);
         shadowColor=new ShadowStyle("shadow-color","Shadow Color",hooks);
-        visibility = new TimedAnimation(TRANSITION_MILLIS, 10, System::currentTimeMillis, hooks);
+        visibility = new TimedAnimation(TRANSITION_MILLIS, 8, System::currentTimeMillis, hooks);
         health = new FrameAnimation(Minecraft::getDebugFPS, rendering.fpsFloor());
         design = EnumSetting.builder("design", Design.class, hooks).configure("Design", Design.MOON).build();
         colorfulBackground = BooleanSetting.builder("colorful-background", hooks).configure("Colorful background", true).build();
@@ -127,10 +127,12 @@ public final class TargetHudModule implements ModuleRowWidget.Module {
         if (displayed != null) {
             name = displayed.getName();
             if (design.get() == Design.MOON) {
-                width = MOON_WIDTH;
+                // Nightly hz: compact 40px HUD with the skin on the left.
+                width = Math.max(MOON_MIN_WIDTH, rendering.font().width(name, 10F) + 45.5F);
                 height = MOON_HEIGHT;
             } else {
-                width = Math.max(90F, rendering.font().width(name, 8F) + 28F);
+                // Nightly hy: fixed 125x50 HUD with the health panel and potion row.
+                width = BASIC_WIDTH;
                 height = BASIC_HEIGHT;
             }
             health.update(Math.max(0, Math.min(displayed.getHealth(), displayed.getMaxHealth())) /
@@ -170,42 +172,48 @@ public final class TargetHudModule implements ModuleRowWidget.Module {
                         shadow ? colorfulBackground.get() ? accent : 0xff000000 : -1);
                 } else {
                     // Shadow coverage is produced exclusively by the shared Effects pass.
-                    rectangle(task, left, top, width, height, RADIUS, originalOpacity(BASE_COLOR, .4F));
-                    rectangle(task, left, top, width, height, RADIUS,
-                        originalOpacity(colorfulBackground.get() ? accent : 0xff000000, .2F));
+                    if (design.get() == Design.MOON) {
+                        rectangle(task, left, top, width, height, RADIUS,
+                            originalOpacity(0xff000000, colorfulBackground.get() ? .275F : .4F));
+                    } else {
+                        rectangle(task, left, top, width, height, 0, BASE_COLOR);
+                        rectangle(task, left - 1, top - 1, width + 2, 1, 0, accent);
+                        rectangle(task, left - 1, top + height, width + 2, 1, 0, accent);
+                        rectangle(task, left - 1, top, 1, height, 0, accent);
+                        rectangle(task, left + width, top, 1, height, 0, accent);
+                    }
                     if (design.get() == Design.MOON) {
                         rectangle(task, left + 39, top + 26, width - 44, 8, 3, TRACK_COLOR);
                     } else {
-                        rectangle(task, left, top, 2.5F, height, 2.5F, alpha(accent, .9F));
-                        rectangle(task, left + 9, top + 27, width - 18, 4, 2, TRACK_COLOR);
+                        rectangle(task, left + 30, top + 17, width - 34, 11, 0, TRACK_COLOR);
                     }
                 }
             });
             if (shadow != null) return;
             MsdfFontBase font = rendering.font();
             if (design.get() == Design.MOON) {
-                float barWidth=(width-52)*health.get();
-                drawTask(rendering.rounded(),null,task->rectangle(task,left+45,top+31,barWidth,4,2,accent));
+                float barWidth=(width-44)*health.get();
+                drawTask(rendering.rounded(),null,task->rectangle(task,left+39,top+26,barWidth,8,3,accent));
                 drawTask(rendering.texture(), () -> mc.getTextureManager().bindTexture(skin), task -> {
-                    task.add(new UiGeometry.RoundedTextureQuad(left+7,top+9,left+39,top+41,
-                        .125F,.125F,.25F,.25F,4,-1,rendering.drawing().markers));
-                    task.add(new UiGeometry.RoundedTextureQuad(left+7,top+9,left+39,top+41,
-                        .625F,.125F,.75F,.25F,4,-1,rendering.drawing().markers));
+                    task.add(new UiGeometry.RoundedTextureQuad(left+4,top+4,left+36,top+36,
+                        .125F,.125F,.25F,.25F,6,-1,rendering.drawing().markers));
+                    task.add(new UiGeometry.RoundedTextureQuad(left+4,top+4,left+36,top+36,
+                        .625F,.125F,.75F,.25F,6,-1,rendering.drawing().markers));
                 });
-                String hp = Math.round(displayed.getHealth()) + "/" + Math.round(displayed.getMaxHealth());
-                String details = targetDetails();
+                String hp = healthText;
                 drawTask(rendering.text(), font::bind, task -> {
-                    font.drawSinglePass(task, name, 9, left+45, top+9, -1);
-                    font.drawSinglePass(task, hp, 7, left+width-8-font.width(hp,7), top+10, 0xffcccccc);
-                    font.drawSinglePass(task, details, 7, left+45, top+39, 0xffc0c0c0);
+                    font.drawSinglePass(task, name, 10, left+40, top+7, -1);
+                    font.drawSinglePass(task, hp, 6.5F, left+40, top+5.5F+font.height(10), -1);
                 });
             } else {
-                float barWidth=(width-18)*health.get();
-                drawTask(rendering.rounded(),null,task->rectangle(task,left+9,top+27,barWidth,4,2,accent));
-                String hp = Math.round(displayed.getHealth()) + " HP";
+                float barWidth=(width-34)*health.get();
+                drawTask(rendering.rounded(),null,task->rectangle(task,left+30,top+17,barWidth,11,0,accent));
+                String hp = Math.round(displayed.getHealth()) + "/" + Math.round(displayed.getMaxHealth());
                 drawTask(rendering.text(), font::bind, task -> {
-                    font.drawSinglePass(task, name, 8, left+9, top+8, -1);
-                    font.drawSinglePass(task, hp, 7, left+width-8-font.width(hp,7), top+8, 0xffcccccc);
+                    font.drawSinglePass(task, name, 9, left+30, top+6, -1);
+                    font.drawSinglePass(task, hp, 7, left+30+(width-34)/2-font.width(hp,7)/2, top+18, -1);
+                    String details=targetDetails();
+                    font.drawSinglePass(task, details, 7, left+30, top+31, 0xffc0c0c0);
                 });
             }
         } finally { RenderTransformState.setAlpha(previousAlpha); }
@@ -234,13 +242,16 @@ public final class TargetHudModule implements ModuleRowWidget.Module {
         DrawTask task = DrawTask.builder(rendering.drawing()).dispatcher(dispatcher).retained().build();
         try {
             task.getState().setTexture(texture);
-            float cx = (left+width/2)/task.getState().getWidth();
-            float cy = (top+height/2)/task.getState().getHeight();
+            float cx = (left + width / 2F) / task.getState().getWidth();
+            float cy = (top + height / 2F) / task.getState().getHeight();
             task.getState().setTransform(new DrawTaskState.Transform() {
                 public void apply(Matrix4f matrix) {
-                    matrix.translate(new Vector3f(cx,cy,0));
-                    matrix.scale(new Vector3f(scale,scale,1));
-                    matrix.translate(new Vector3f(-cx,-cy,0));
+                    // MatrixTransforms.write uploads rows: translation belongs in m03/m13.
+                    // LWJGL translate() writes m30/m31, which become perspective terms here.
+                    matrix.m00 = scale;
+                    matrix.m11 = scale;
+                    matrix.m03 = cx * (1F - scale);
+                    matrix.m13 = cy * (1F - scale);
                 }
                 public void unapply(Matrix4f matrix) { matrix.setIdentity(); }
             });

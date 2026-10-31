@@ -39,14 +39,15 @@ public final class KillAuraModule extends NativeModule {
         void useKey(boolean pressed);
         /** Publish an attack cancellation event, then use vanilla swing/attack ordering. */
         boolean attack(int entityId,boolean realClick,boolean ignoreBlocking);
+        default void stopSprintOnAttack() {}
         /** Original eZ swings when only aim-reach contains the target. */
         default void swingMiss() {}
     }
     public final KillAuraSettings config;
+    public final moon.module.combat.killaura.OpenB4Aura openB4;
     private final Host host;
     private final RandomGenerator random;
     private final KillAuraTargetSelector selector=new KillAuraTargetSelector();
-    private final KillAuraRotations rotations=new KillAuraRotations();
     private final KillAuraClickScheduler clicks;
     private Target target;
     private boolean blocked,useKeyOwned,packetBlocked;
@@ -57,24 +58,25 @@ public final class KillAuraModule extends NativeModule {
     public KillAuraModule(Host host,MarkerHooks hooks,RandomGenerator random) {
         super("killaura","KillAura",Category.COMBAT);
         this.host=Objects.requireNonNull(host);this.random=Objects.requireNonNull(random);
-        config=new KillAuraSettings(hooks);clicks=new KillAuraClickScheduler(KillAuraClickScheduler.Policy.destination());
+        config=new KillAuraSettings(hooks);openB4=new moon.module.combat.killaura.OpenB4Aura(this,hooks);clicks=new KillAuraClickScheduler(KillAuraClickScheduler.Policy.destination());
     }
     @Override public String hudSuffix(){return config.clickPattern.get().displayName();}
-    public List<? extends SettingValue<?>> settings() { return config.roots(); }
+    public List<? extends SettingValue<?>> settings() {var result=new ArrayList<SettingValue<?>>(config.roots());result.addAll(openB4.settings());return result;}
     public Target target() { return target; }
-    public Angles angles() { return rotations.current(); }
+    public Angles angles() { return openB4.angles(); }
     public String pendingReason() { return pendingReason; }
     public long attackAttempts() { return attempts; }
     public long attacks() { return attacks; }
     /** jc.dM: every auto-block mode publishes a visual pose while a sword/target is active. */
     public boolean rendersBlockPose() {
+        if(openB4.blocks())return enabled()&&host.available()&&!host.cancelledByOtherModule()&&openB4.pose();
         return enabled()&&host.available()&&!host.cancelledByOtherModule()&&config.autoBlock.get()
                 &&host.swordHeld()&&target!=null;
     }
-    protected void onEnable() { worldChanged();rotations.reset(host.player(),random); }
+    protected void onEnable() { worldChanged(); }
     protected void onDisable() { worldChanged(); }
     public void worldChanged() {
-        releaseBlocking();activeBlockMode=null;target=null;pendingReason=null;clicks.reset();rotations.reset(null,random);
+        releaseBlocking();openB4.reset();activeBlockMode=null;target=null;pendingReason=null;clicks.reset();
     }
     /** jc.ds: one immediate eZ.b attempt, reset g, then skip the next normal cycle.
      * The original ea/jm time-bank publisher is a separate module, not synthesized here.
@@ -95,44 +97,58 @@ public final class KillAuraModule extends NativeModule {
         // jc writes these settings before invoking e2 and e1, in this order.
         config.aimReach.set(Math.max(config.aimReach.get(),config.reach.get()));
         config.reach.set(Math.min(config.reach.get(),config.aimReach.get()));
-        Player player=host.player();target=selector.select(player,host.targets(),config);
-        Angles current=rotations.current();
-        rotations.update(player,target,config,random,target!=null&&current!=null&&host.rayHits(target.id(),current,6));
-        if(target==null)sprintAllowed=true;
+        Player player=host.player();target=selector.select(player,host.targets(),config,
+            openB4.blocks()&&config.autoBlock.get()?Math.max(config.aimReach.get(),openB4.blockRange.get()):config.aimReach.get());
+        openB4.update();
+        sprintAllowed=true;
         if(target==null||!host.swordHeld())releaseBlocking();
     }
     /** Called once immediately before the actual C03 walking-player packet dispatch. */
     public Angles motionPre() {
         if(!enabled()||!host.available()||pendingReason!=null||host.cancelledByOtherModule())return null;
         blockMotionPre();
-        if(target!=null) {
+        boolean canAttack=openB4.pre();
+        if(target!=null&&canAttack) {
+            if(openB4.useBlockScheduler()){
+                if(openB4.attackDue()){beforeAttackBatch();attackOnce();afterAttackBatch();}
+                return config.rotate.get()?angles():null;
+            }
             clicks.cycle(config,host.currentTimeMillis(),random,host.hurtResistantTime(),host.heldItemAttackSpeed(),
                     this::beforeAttackBatch,this::attackOnce,this::afterAttackBatch);
         }
-        return config.rotate.get()?rotations.current():null;
+        return config.rotate.get()?angles():null;
     }
     private void beforeAttackBatch() {
         if(activeBlockMode==KillAuraSettings.BlockMode.SPOOF)restoreSpoofSlot();
         else if(normalPacketBlocking()&&config.unblockOnAttack.get())releaseBlock();
     }
     private void attackOnce() {
+        if(target==null)return;
+        if(!openB4.beforeAttack())return;
+        if(openB4.rotates()&&!openB4.canAttackTarget())return;
+        if(openB4.rotates()&&config.rotate.get()&&openB4.rotation.get()!=moon.module.combat.killaura.OpenB4Aura.Rotation.None
+            &&openB4.angles()!=null&&!openB4.rayHitsTarget(config.reach.get()))return;
         ++attempts;
+        boolean inReach=KillAuraTargetSelector.distance(host.player(),target)<=config.reach.get();
         // eZ.b checks Real click before target/distance and queues input even at aim-only reach.
-        if(config.realClick.get()) {
+        if(config.realClick.get()&&!openB4.blocks()) {
+            if(inReach&&config.stopSprintOnAttack.get())host.stopSprintOnAttack();
             if(host.attack(target==null?-1:target.id(),true,config.ignoreBlocking.get()))++attacks;
             return;
         }
-        boolean inReach=KillAuraTargetSelector.distance(host.player(),target)<=config.reach.get();
         if(inReach) {
-            if(host.attack(target.id(),config.realClick.get(),config.ignoreBlocking.get()))++attacks;
-        } else if(!config.realClick.get())host.swingMiss();
+            if(config.stopSprintOnAttack.get())host.stopSprintOnAttack();
+            if(host.attack(target.id(),config.realClick.get()&&!openB4.blocks(),config.ignoreBlocking.get()))++attacks;
+        } else if(KillAuraTargetSelector.distance(host.player(),target)<=config.aimReach.get())host.swingMiss();
     }
     private void afterAttackBatch() {
+        openB4.afterAttack();
         // eP.d runs once after all same-motion attempts, even if cancelled or aim-only.
         if(normalPacketBlocking()&&config.unblockOnAttack.get()) { if(!blocked)block(); }
         else if(clickKeyBlocking()&&host.swordHeld())setUseKey(true);
     }
     public void motionPost() {
+        if(enabled()&&host.available()&&!host.cancelledByOtherModule())openB4.post();
         if(enabled()&&host.available()&&pendingReason==null&&!host.cancelledByOtherModule()
                 &&target!=null) {
             if(activeBlockMode==KillAuraSettings.BlockMode.POST)block();
@@ -142,7 +158,7 @@ public final class KillAuraModule extends NativeModule {
         }
     }
     public boolean hasRotation() {
-        return enabled()&&host.available()&&!host.cancelledByOtherModule()&&pendingReason==null&&angles()!=null;
+        return enabled()&&host.available()&&!host.cancelledByOtherModule()&&pendingReason==null&&config.rotate.get()&&angles()!=null;
     }
     public boolean correctingMovement() { return hasRotation()&&config.correctMovement.get(); }
     public boolean allowsSprintKey() { return !enabled()||sprintAllowed; }
@@ -166,7 +182,7 @@ public final class KillAuraModule extends NativeModule {
         if(!sprinting&&forward>=.8F&&canSprint&&!usingItem&&!blind)sprintAllowed=true;
     }
     private Object selectedBlockMode() {
-        return !config.autoBlock.get()?null:config.clickAutoBlock.get()?config.clickBlockMode.get():config.blockMode.get();
+        return openB4.blocks()?null:!config.autoBlock.get()?null:config.clickAutoBlock.get()?config.clickBlockMode.get():config.blockMode.get();
     }
     private boolean normalPacketBlocking() {
         return activeBlockMode==KillAuraSettings.BlockMode.PRE||activeBlockMode==KillAuraSettings.BlockMode.POST;
@@ -200,6 +216,11 @@ public final class KillAuraModule extends NativeModule {
         int slot=host.selectedSlot();host.sendHeldItemChange(slot%8+1);host.sendHeldItemChange(slot);
     }
     private void restoreSpoofSlot() { if(packetBlocked) { sendSlotPair();packetBlocked=false; } }
+    public void afterInput(){openB4.afterInput();}
+    public boolean manualBlockAttack(){long previous=attacks;attackOnce();return attacks>previous;}
+    public boolean outgoing(net.minecraft.network.Packet<?> packet){return openB4.outgoing(packet);}
+    public void correction(){openB4.correction();}
+    public boolean stopForScaffold(){boolean had=blocked||packetBlocked||useKeyOwned;releaseBlocking();return openB4.stop()||had;}
     private void releaseBlocking() {
         releaseBlock();
         if(packetBlocked) {

@@ -115,7 +115,7 @@ public final class McpVisualServices implements AutoCloseable,SettingWidgetFacto
             McpVisualServices active=created;
             McpVisualEvents.install(new McpVisualEvents.Binding(created.effects,created.hud.pipeline,created.clickSettings.module(),
                 created::effectsEnabled,created::hudEnabled,created::tick,created::tickPost,created::resize,created,
-                ticks->{active.glow.worldPost(ticks);active.nativeModules.backtrack.render();},created::overlayPre,created::prepareNativeOverlay,created::drawNativeOverlay,created::maskNativeOverlay));
+                ticks->{active.glow.worldPost(ticks);active.nativeModules.backtrack.render();moon.client.McpModuleServices.renderScaffold();},created::overlayPre,created::prepareNativeOverlay,created::drawNativeOverlay,created::maskNativeOverlay));
             instance=created;LOG.info("Visual services initialized: {} (Right Shift opens ClickGUI)",created.profile.ID);
         }catch(Exception|Error failure){
             if(created!=null)try{created.close();}catch(Exception cleanup){failure.addSuppressed(cleanup);}
@@ -381,7 +381,8 @@ public final class McpVisualServices implements AutoCloseable,SettingWidgetFacto
         if(shadow){notifications.shadowColor.render(()->notifications.mask(true));targetHud.mask(true);nativeModules.session.shadowColor.render(()->sessionHud.mask(true));customMinecraft.mask(true);}
         else{notifications.mask(false);targetHud.mask(false);sessionHud.mask(false);customMinecraft.mask(false);}
     }
-    private void drawNativeOverlay(){notifications.draw();sessionHud.draw();nativeModules.chest.renderSilent(0);targetHud.draw();customMinecraft.draw();}
+    private void drawNativeOverlay(){
+        moon.client.McpModuleServices.renderScaffoldCount();notifications.draw();sessionHud.draw();nativeModules.chest.renderSilent(0);targetHud.draw();customMinecraft.draw();}
     private void invalidateSettings(){post.requestShadowUpdate();post.requestBlurUpdate();hud.pipeline.setDirty(true);glow.resized();}
     private void resize(){camera.invalidate();stencilOwner.resized();post.requestShadowUpdate();post.requestBlurUpdate();hud.pipeline.setDirty(true);glow.resized();}
     public void openClickGui(){backend.requireOpen();clickSettings.module().openSelectedScreen();}
@@ -452,6 +453,8 @@ public final class McpVisualServices implements AutoCloseable,SettingWidgetFacto
     public int liveOwnedResources(){return (sessionHud==null?0:sessionHud.liveTextures())+(camera==null?0:camera.liveFramebuffers())+(imGui==null?0:imGui.liveResources())+backend.liveResources()+textures.liveTextures()+(post==null?0:post.liveDrawResources()+post.liveFramebuffers())+(stencilOwner==null?0:stencilOwner.liveAttachments())+(glow==null?0:glow.liveFramebuffers()+glow.liveAdditionalTextures());}
     @Override public void close(){
         if(closed)return;backend.requireOpen();closed=true;
+        // Capture enabled states before native/Lua shutdown disables modules.
+        if(profiles!=null)try{profiles.save("latest");}catch(IOException|RuntimeException failure){LOG.error("Could not save latest.json on shutdown",failure);}
         if(config!=null)try{config.flush();}catch(IOException|RuntimeException failure){LOG.error("Could not save visual settings on shutdown",failure);}
         if(nativeModules!=null)try{nativeModules.close();}catch(RuntimeException failure){LOG.error("Native module cleanup failed",failure);}
         dev.pier.lua.LuaManager.get().shutdown();

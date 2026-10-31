@@ -108,4 +108,14 @@ public class C08PacketPlayerBlockPlacement implements Packet<INetHandlerPlayServ
     {
         return this.facingZ;
     }
+
+    /** Native Scaffold aligns its controller-generated placement to the validated hit. */
+    public void moonAlignPlacement(BlockPos position, int direction, float x, float y, float z)
+    {
+        this.position = position;
+        this.placedBlockDirection = direction;
+        this.facingX = x;
+        this.facingY = y;
+        this.facingZ = z;
+    }
 }

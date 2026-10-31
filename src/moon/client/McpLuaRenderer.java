@@ -14,7 +14,14 @@ import org.lwjgl.opengl.*;
  */
 public final class McpLuaRenderer {
     private static final ThreadLocal<List<Shape>> deferred=new ThreadLocal<>();
+    private static final ThreadLocal<Boolean> effectPass=ThreadLocal.withInitial(()->false);
+    private static final LinkedHashMap<String,Shape> effectText=new LinkedHashMap<>();
+    private record VanillaText(String text,float x,float y,int color,boolean shadow){}
+    private static final LinkedHashSet<VanillaText> effectVanillaText=new LinkedHashSet<>();
     private McpLuaRenderer(){}
+    public static void requestEffectsRedraw(){
+        var v=McpVisualServices.current();if(v!=null){v.effects.requestShadowUpdate();v.post.requestBlurUpdate();}
+    }
     public static void renderCallback(Runnable callback){
         if(McpVisualServices.current()==null){callback.run();return;}
         visual();try(DrawState state=new DrawState()){
@@ -23,6 +30,21 @@ public final class McpLuaRenderer {
             GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA,GL11.GL_ONE_MINUS_SRC_ALPHA,GL11.GL_ONE,GL11.GL_ONE_MINUS_SRC_ALPHA);
             try{callback.run();}finally{if(owner){List<Shape> queued=deferred.get();deferred.remove();drawNow(queued);}}
         }
+    }
+    public static void renderEffectCallback(Runnable callback){
+        boolean previous=effectPass.get();effectPass.set(true);
+        try{renderCallback(callback);}finally{effectPass.set(previous);}
+    }
+    public static void beginEffectFrame(){effectText.clear();effectVanillaText.clear();}
+    public static void flushEffectText(){
+        if(effectText.isEmpty()&&effectVanillaText.isEmpty())return;
+        try(DrawState state=new DrawState()){
+            GlStateManager.disableDepth();GlStateManager.enableBlend();GlStateManager.enableAlpha();
+            GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA,GL11.GL_ONE_MINUS_SRC_ALPHA,GL11.GL_ONE,GL11.GL_ONE_MINUS_SRC_ALPHA);
+            drawNow(List.copyOf(effectText.values()));
+            var visual=visual();for(VanillaText text:effectVanillaText)
+                visual.mc.fontRendererObj.drawString(text.text(),text.x(),text.y(),text.color(),text.shadow());
+        }finally{effectText.clear();effectVanillaText.clear();}
     }
     /** Shared HUD state scope; preserves the caller framebuffer and GL bindings. */
     public static void renderHud(Runnable callback){
@@ -60,7 +82,7 @@ public final class McpLuaRenderer {
     // These names follow LuaApi.enums.custom_font_type's existing zero-based order.
     private static String fontName(int font){return switch(font){
         case 0->"Roboto-Medium";case 1->"inter_medium";case 2->"Tahoma";case 3->"Verdana";
-        case 4->throw new LuaError("SF font atlas is absent from the recovered assets");
+        case 4->"SFUI";
         case 5->"ProductSans";case 6->"MaterialIcons-Regular";
         case 7->"MaterialSymbolsOutlined-Regular";case 8->"Volte-SemiBold";
         default->throw new LuaError("Unknown custom font: "+font);
@@ -114,8 +136,10 @@ public final class McpLuaRenderer {
             Varargs a=strip(args,immediate);String text=a.checkjstring(1);float x=(float)a.checkdouble(2),y=(float)a.checkdouble(3);
             if(!Float.isFinite(x)||!Float.isFinite(y))throw new LuaError("Nonfinite text position");
             LuaTable value=new LuaTable();value.set("color",a.arg(4));int color=color(value,"color");
+            boolean shadow=a.arg(5).optboolean(false);
+            if(effectPass.get()){effectVanillaText.add(new VanillaText(text,x,y,color,shadow));return LuaValue.NONE;}
             flushPending();McpVisualServices v=visual();try(DrawState state=new DrawState()){
-                v.mc.fontRendererObj.drawString(text,x,y,color,a.arg(5).optboolean(false));
+                v.mc.fontRendererObj.drawString(text,x,y,color,shadow);
             }return LuaValue.NONE;
         }));
         render.set("immediate",immediate);
@@ -131,7 +155,7 @@ public final class McpLuaRenderer {
                 }return LuaValue.NONE;
             }));
         render.set("state",state);render.set("implemented",LuaValue.TRUE);
-        LuaTable fonts=new LuaTable();for(int i=0;i<=8;i++)fonts.set(i,LuaValue.valueOf(i!=4));render.set("supported_fonts",fonts);
+        LuaTable fonts=new LuaTable();for(int i=0;i<=8;i++)fonts.set(i,LuaValue.TRUE);render.set("supported_fonts",fonts);
         return render;
     }
     public static LuaTable fontTable(){
@@ -146,7 +170,15 @@ public final class McpLuaRenderer {
     }
     private static void checkSize(float value){if(!Float.isFinite(value)||value<=0)throw new LuaError("Text size must be finite and positive");}
     private static void draw(List<Shape> shapes){
+        if(effectPass.get()){
+            List<Shape> masks=new ArrayList<>();
+            for(Shape shape:shapes)if(shape.kind==4)effectText.putIfAbsent(textKey(shape),shape);else masks.add(shape);
+            shapes=masks;
+        }
         if(shapes.isEmpty())return;List<Shape> queue=deferred.get();if(queue!=null){for(Shape shape:shapes)if(shape.kind==4)visual().font(fontName(shape.font));queue.addAll(shapes);return;}drawNow(shapes);
+    }
+    private static String textKey(Shape shape){
+        return shape.font+"|"+shape.text+"|"+shape.color+"|"+shape.flag+"|"+Arrays.toString(shape.coordinates);
     }
     private static void drawNow(List<Shape> shapes){
         McpVisualServices v=visual();if(shapes.isEmpty())return;

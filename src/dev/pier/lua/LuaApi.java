@@ -92,6 +92,7 @@ public final class LuaApi {
         globals.set("types", typesTable());
         globals.set("render", renderTable(manager));
         globals.set("font", fontTable());
+        LuaGameApis.install(globals);
         return globals;
     }
 
@@ -133,7 +134,7 @@ public final class LuaApi {
 
         modules.set("create_boolean_setting", fn(args -> {
             Varargs a = strip(args, modules);
-            LuaModule module = manager.findModule(a.checkjstring(1));
+            LuaModule module = manager.findScriptModule(a.checkjstring(1));
             if (module != null) {
                 module.addSetting(new LuaSetting(a.checkjstring(2), a.checkjstring(3),
                         LuaSetting.Type.BOOLEAN, a.checkboolean(4)));
@@ -143,7 +144,7 @@ public final class LuaApi {
 
         modules.set("create_integer_setting", fn(args -> {
             Varargs a = strip(args, modules);
-            LuaModule module = manager.findModule(a.checkjstring(1));
+            LuaModule module = manager.findScriptModule(a.checkjstring(1));
             if (module != null) {
                 module.addSetting(new LuaSetting(a.checkjstring(2), a.checkjstring(3),
                         LuaSetting.Type.INTEGER, a.checkint(4)));
@@ -153,7 +154,7 @@ public final class LuaApi {
 
         modules.set("create_float_setting", fn(args -> {
             Varargs a = strip(args, modules);
-            LuaModule module = manager.findModule(a.checkjstring(1));
+            LuaModule module = manager.findScriptModule(a.checkjstring(1));
             if (module != null) {
                 module.addSetting(new LuaSetting(a.checkjstring(2), a.checkjstring(3),
                         LuaSetting.Type.FLOAT, a.checkdouble(4)));
@@ -163,7 +164,7 @@ public final class LuaApi {
 
         modules.set("create_color_setting", fn(args -> {
             Varargs a = strip(args, modules);
-            LuaModule module = manager.findModule(a.checkjstring(1));
+            LuaModule module = manager.findScriptModule(a.checkjstring(1));
             if (module != null) {
                 module.addSetting(new LuaSetting(a.checkjstring(2), a.checkjstring(3),
                         LuaSetting.Type.COLOR, colorBits(a.arg(4))));
@@ -173,7 +174,7 @@ public final class LuaApi {
 
         modules.set("create_text_setting", fn(args -> {
             Varargs a = strip(args, modules);
-            LuaModule module = manager.findModule(a.checkjstring(1));
+            LuaModule module = manager.findScriptModule(a.checkjstring(1));
             if (module != null) {
                 module.addSetting(new LuaSetting(a.checkjstring(2), a.checkjstring(3),
                         LuaSetting.Type.TEXT, a.checkjstring(4)));
@@ -183,7 +184,7 @@ public final class LuaApi {
 
         modules.set("get_setting", fn(args -> {
             Varargs a = strip(args, modules);
-            LuaModule module = manager.findModule(a.checkjstring(1));
+            LuaModule module = manager.findScriptModule(a.checkjstring(1));
             if (module == null) {
                 return LuaValue.NIL;
             }
@@ -192,7 +193,7 @@ public final class LuaApi {
 
         modules.set("set_setting", fn(args -> {
             Varargs a = strip(args, modules);
-            LuaModule module = manager.findModule(a.checkjstring(1));
+            LuaModule module = manager.findScriptModule(a.checkjstring(1));
             if (module != null) {
                 module.setSetting(a.checkjstring(2), a.arg(3));
             }

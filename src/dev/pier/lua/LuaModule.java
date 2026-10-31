@@ -27,6 +27,8 @@ public final class LuaModule {
 
     private boolean enabled;
     private boolean failed;
+    private Throwable lastFailure;
+    public Throwable lastFailure(){return lastFailure;}
 
     public LuaModule(LuaManager manager, Globals globals, String name, String displayName,
                      String description, LuaTable table) {
@@ -77,10 +79,12 @@ public final class LuaModule {
         try {
             invoke(state ? "on_enable" : "on_disable");
         } catch (LuaError error) {
+            lastFailure=error;
             failed = true;
             enabled = false;
             manager.onScriptError(this, error);
         } catch (Throwable throwable) {
+            lastFailure=throwable;
             failed = true;
             enabled = false;
             manager.onScriptError(this, throwable);
@@ -94,10 +98,12 @@ public final class LuaModule {
         try {
             invoke("on_tick", LuaValue.valueOf(true));
         } catch (LuaError error) {
+            lastFailure=error;
             failed = true;
             enabled = false;
             manager.onScriptError(this, error);
         } catch (Throwable throwable) {
+            lastFailure=throwable;
             failed = true;
             enabled = false;
             manager.onScriptError(this, throwable);
@@ -111,10 +117,31 @@ public final class LuaModule {
         try {
             invoke("on_update", event);
         } catch (LuaError error) {
+            lastFailure=error;
             failed = true;
             enabled = false;
             manager.onScriptError(this, error);
         } catch (Throwable throwable) {
+            lastFailure=throwable;
+            failed = true;
+            enabled = false;
+            manager.onScriptError(this, throwable);
+        }
+    }
+
+    public synchronized void move(LuaTable event) {
+        if (!enabled || failed) {
+            return;
+        }
+        try {
+            invoke("on_move", event);
+        } catch (LuaError error) {
+            lastFailure=error;
+            failed = true;
+            enabled = false;
+            manager.onScriptError(this, error);
+        } catch (Throwable throwable) {
+            lastFailure=throwable;
             failed = true;
             enabled = false;
             manager.onScriptError(this, throwable);
@@ -128,10 +155,12 @@ public final class LuaModule {
         try {
             invoke("on_packet_receive", event);
         } catch (LuaError error) {
+            lastFailure=error;
             failed = true;
             enabled = false;
             manager.onScriptError(this, error);
         } catch (Throwable throwable) {
+            lastFailure=throwable;
             failed = true;
             enabled = false;
             manager.onScriptError(this, throwable);
@@ -145,10 +174,12 @@ public final class LuaModule {
         try {
             invoke("on_packet_send", event);
         } catch (LuaError error) {
+            lastFailure=error;
             failed = true;
             enabled = false;
             manager.onScriptError(this, error);
         } catch (Throwable throwable) {
+            lastFailure=throwable;
             failed = true;
             enabled = false;
             manager.onScriptError(this, throwable);
@@ -170,12 +201,15 @@ public final class LuaModule {
             return;
         }
         try {
-            invoke("on_overlay_render", LuaValue.valueOf(partialTicks), LuaValue.valueOf(pre));
+            LuaTable event=new LuaTable(); event.set("partial_ticks",LuaValue.valueOf(partialTicks));
+            event.set("pre",LuaValue.valueOf(pre)); invoke("on_overlay_render",event);
         } catch (LuaError error) {
+            lastFailure=error;
             failed = true;
             enabled = false;
             manager.onScriptError(this, error);
         } catch (Throwable throwable) {
+            lastFailure=throwable;
             failed = true;
             enabled = false;
             manager.onScriptError(this, throwable);
@@ -187,12 +221,15 @@ public final class LuaModule {
             return;
         }
         try {
-            invoke("on_effect_render", LuaValue.valueOf(blur), LuaValue.valueOf(partialTicks));
+            LuaTable event=new LuaTable(); event.set("partial_ticks",LuaValue.valueOf(partialTicks));
+            event.set("blur",LuaValue.valueOf(blur)); invoke("on_effect_render",event);
         } catch (LuaError error) {
+            lastFailure=error;
             failed = true;
             enabled = false;
             manager.onScriptError(this, error);
         } catch (Throwable throwable) {
+            lastFailure=throwable;
             failed = true;
             enabled = false;
             manager.onScriptError(this, throwable);

@@ -47,6 +47,9 @@ public final class LuaManager {
     private LuaConfig config;
     private boolean initialized;
     private boolean autoEnable = false;
+    private String scriptFingerprint = "";
+    private String pendingScriptFingerprint;
+    private long scriptChangeObservedAt;
 
     private LuaManager() {
     }
@@ -86,6 +89,7 @@ public final class LuaManager {
             for (LuaModule module : snapshot) {
                 if (module.isEnabled()) module.tick();
             }
+            pollScripts();
             if(config!=null)config.poll(System.currentTimeMillis());
         } catch (Throwable throwable) {
             log("Tick error: " + throwable);
@@ -110,7 +114,7 @@ public final class LuaManager {
         }
         for (LuaModule module : snapshotModules()) {
             if (module.isEnabled()) {
-                moon.client.McpLuaRenderer.renderCallback(() -> module.renderEffect(blur, partialTicks));
+                moon.client.McpLuaRenderer.renderEffectCallback(() -> module.renderEffect(blur, partialTicks));
             }
         }
     }
@@ -119,6 +123,26 @@ public final class LuaManager {
      * Moon's on_update(pre, x, y, z, yaw, pitch, ground) event. The table is
      * passed by reference, so scripts can read and, on pre, edit values.
      */
+    /** Shared move table is applied before vanilla collision handling. */
+    public double[] onMove(double x,double y,double z) {
+        LuaTable event=new LuaTable();event.set("x",LuaValue.valueOf(x));
+        event.set("y",LuaValue.valueOf(y));event.set("z",LuaValue.valueOf(z));
+        if(initialized)for(LuaModule module:snapshotModules())if(module.isEnabled())module.move(event);
+        double a=event.get("x").checkdouble(),b=event.get("y").checkdouble(),c=event.get("z").checkdouble();
+        if(!Double.isFinite(a)||!Double.isFinite(b)||!Double.isFinite(c))return new double[]{x,y,z};
+        return new double[]{a,b,c};
+    }
+
+    /** Motion PRE runs after physics and edits packet data, preserving camera/input yaw. */
+    public LuaTable motionUpdate(EntityPlayerSP player,boolean pre,moon.client.McpModuleServices.Motion original){
+        LuaTable event=new LuaTable();event.set("pre",LuaValue.valueOf(pre));
+        event.set("x",LuaValue.valueOf(player.posX));event.set("y",LuaValue.valueOf(original.y()));
+        event.set("z",LuaValue.valueOf(player.posZ));event.set("yaw",LuaValue.valueOf(original.yaw()));
+        event.set("pitch",LuaValue.valueOf(original.pitch()));event.set("ground",LuaValue.valueOf(original.onGround()));
+        if(initialized)for(LuaModule module:snapshotModules())if(module.isEnabled())module.update(event);
+        return event;
+    }
+
     public void onUpdate(EntityPlayerSP player, boolean pre) {
         if (!initialized || player == null) {
             return;
@@ -257,11 +281,9 @@ public final class LuaManager {
             modules.clear();
         }
 
-        File[] files = scriptDir.listFiles((dir, name) -> name.toLowerCase(Locale.ROOT).endsWith(".lua"));
-        if (files == null) {
-            return;
-        }
-        Arrays.sort(files, Comparator.comparing(File::getName));
+        List<File> files = listLuaFiles(scriptDir);
+        scriptFingerprint = fingerprint(files);
+        pendingScriptFingerprint = null;
 
         int loaded = 0;
         for (File file : files) {
@@ -273,13 +295,53 @@ public final class LuaManager {
         log("Loaded " + loaded + " script(s) from " + scriptDir.getAbsolutePath());
     }
 
+    private void pollScripts() {
+        List<File> files = listLuaFiles(scriptDir);
+        String current = fingerprint(files);
+        long now = System.currentTimeMillis();
+        if (current.equals(scriptFingerprint)) {
+            pendingScriptFingerprint = null;
+            return;
+        }
+        if (!current.equals(pendingScriptFingerprint)) {
+            pendingScriptFingerprint = current;
+            scriptChangeObservedAt = now;
+            return;
+        }
+        // Wait for copy/write activity to settle before compiling a newly dropped script.
+        if (now - scriptChangeObservedAt >= 750L) reloadScripts();
+    }
+
+    private List<File> listLuaFiles(File directory) {
+        List<File> files = new ArrayList<File>();
+        File[] children = directory == null ? null : directory.listFiles();
+        if (children == null) return files;
+        Arrays.sort(children, Comparator.comparing(File::getName, String.CASE_INSENSITIVE_ORDER));
+        for (File child : children) {
+            if (child.isDirectory()) files.addAll(listLuaFiles(child));
+            else if (child.getName().toLowerCase(Locale.ROOT).endsWith(".lua")) files.add(child);
+        }
+        return files;
+    }
+
+    private String fingerprint(List<File> files) {
+        StringBuilder result = new StringBuilder();
+        for (File file : files) {
+            String relative = scriptDir.toPath().relativize(file.toPath()).toString();
+            result.append(relative).append('\0').append(file.length()).append(':').append(file.lastModified()).append('\n');
+        }
+        return result.toString();
+    }
+
     private boolean loadScript(File file) {
+        if ("Scaffold.lua".equalsIgnoreCase(file.getName())) return true;
         Globals globals = null;
         try {
             globals = LuaApi.createGlobals(this);
             try (InputStream in = new FileInputStream(file);
                  Reader reader = new InputStreamReader(in, StandardCharsets.UTF_8)) {
-                globals.load(reader, "@" + file.getName()).call();
+                String sourceName = scriptDir.toPath().relativize(file.toPath()).toString().replace('\\', '/');
+                globals.load(reader, "@" + sourceName).call();
             }
 
             if (autoEnable) {
@@ -368,9 +430,17 @@ public final class LuaManager {
         return null;
     }
 
+    /** API identities are registration IDs; GUI display names can collide with native modules. */
+    public LuaModule findScriptModule(String name){
+        if(name==null)return null;
+        synchronized(modules){return modules.get(name.toLowerCase(Locale.ROOT));}
+    }
+
     public boolean isEnabled(String name) {
-        LuaModule module = findModule(name);
-        return module != null && module.isEnabled();
+        LuaModule module = findScriptModule(name);
+        if(module!=null)return module.isEnabled();
+        moon.module.NativeModule nativeModule=LuaGameApis.nativeModule(name);
+        return nativeModule!=null&&nativeModule.enabled();
     }
 
     /**
@@ -379,18 +449,22 @@ public final class LuaManager {
      * feature must not throw a Lua error or break the script's state machine.
      */
     public boolean setState(String name, boolean state) {
-        LuaModule module = findModule(name);
+        LuaModule module = findScriptModule(name);
         if (module == null) {
-            return false;
+            moon.module.NativeModule nativeModule=LuaGameApis.nativeModule(name);
+            if(nativeModule==null)return false;
+            nativeModule.setEnabled(state);return true;
         }
         module.setEnabled(state);
         return true;
     }
 
     public boolean toggle(String name) {
-        LuaModule module = findModule(name);
+        LuaModule module = findScriptModule(name);
         if (module == null) {
-            return false;
+            moon.module.NativeModule nativeModule=LuaGameApis.nativeModule(name);
+            if(nativeModule==null)return false;
+            nativeModule.toggle();return true;
         }
         module.setEnabled(!module.isEnabled());
         return true;

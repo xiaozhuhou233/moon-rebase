@@ -376,6 +376,7 @@ public class PlayerControllerMP
     /**
      * Syncs the current player item with the server
      */
+    public void moonSyncCurrentPlayItem(){syncCurrentPlayItem();}
     private void syncCurrentPlayItem()
     {
         int i = this.mc.thePlayer.inventory.currentItem;

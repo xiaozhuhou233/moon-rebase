@@ -1,6 +1,7 @@
 package moon.visual.hud;
 
 import java.awt.Color;
+import java.util.List;
 import moon.visual.render.*;
 
 /** f8/f9 normal null-f4 path, including original informative mask and logo
@@ -9,6 +10,7 @@ import moon.visual.render.*;
 public final class WatermarkHudRenderer implements HudRenderer {
     public static final String LOGO_TEXTURE="logo.png";
     public enum Style { TEXT,LOGO,INFORMATIVE } // be declaration order
+    public record Row(String label,String value){}
     public interface Config extends HudColors.Config {
         boolean enabled();Style style();boolean customTextFont();String text();
         HudColors.Mode colorMode();int colorOne();int colorTwo();boolean tintBackground();boolean translucentText();float scale();
@@ -17,28 +19,37 @@ public final class WatermarkHudRenderer implements HudRenderer {
     public interface Host {
         boolean originalGuardIsNull();Config findHudConfig();MsdfFontBase selectedFont();DrawTask componentTextTask();
         DrawServices drawing();ShaderDispatcher textureDispatcher();void enableTexture2D();void bindResource(String resource);void bindTexture(int texture);
+        List<Row> informativeRows();String informativeTitle();
         ServerData serverData();String buildSuffix();int framesPerSecond();void drawVanilla(String text,float x,float y,int color);
     }
     private final Host host;
     private final HudColors colors;
     private Config config;
+    private List<Row> cachedRows;
+    private long cachedRowsAt;
     public WatermarkHudRenderer(Host host,HudColors colors){this.host=host;this.colors=colors;}
+    private List<Row> rows(){
+        long now=System.currentTimeMillis();
+        if(cachedRows==null||now-cachedRowsAt>50L){cachedRows=host.informativeRows();cachedRowsAt=now;}
+        return cachedRows==null?List.of():cachedRows;
+    }
     private void ensureConfig() {
         if(!host.originalGuardIsNull())throw new UnsupportedOperationException("f8 nonnull f4 sentinel not restored");
         if(config==null)config=host.findHudConfig();
     }
     private int color() {return colors.color(0F,config,config.colorMode(),config.colorOne(),config.colorTwo());}
-    private String[] informativeParts() {
-        String server="Singleplayer";
-        if(host.serverData()!=null)server=host.serverData().address(); // two original lookups
-        return new String[]{"Moon","b8e61134ee6d4968344274b8619c9a6fd3438c7c".substring(0,7),host.buildSuffix(),server,host.framesPerSecond()+" fps"};
+    private static final float CARD_X=7F,CARD_PADDING=8F,LABEL_VALUE_GAP=10F;
+    private float informativeWidth(MsdfFontBase font){
+        float width=font.width(host.informativeTitle(),12F);
+        for(Row row:rows())width=Math.max(width,font.width(row.label(),8F)+LABEL_VALUE_GAP+font.width(row.value(),8F));
+        return width+CARD_PADDING*2F;
     }
+    private float informativeHeight(MsdfFontBase font){return font.height(8F)*(rows().size()+1)+18F;}
     @Override public void prepareRectangles(DrawTask task) { }
     @Override public void prepareBackground(DrawTask task) {
         ensureConfig();MsdfFontBase font=host.selectedFont(); // even when disabled
         if(!config.enabled()||config.style()!=Style.INFORMATIVE)return;
-        String text=String.join("  \u00a77|  \u00a7r",informativeParts());
-        float width=font.width(text,7.5F)+12F,height=font.height(7.5F)+12F;
+        float width=informativeWidth(font),height=informativeHeight(font);
         int tint=color();
         task.add(new UiGeometry.RoundedRectangle(7F,8F,width,height,6F,new ArgbColor(0xff000000).withAlpha(.4F).getRGB(),host.drawing().markers));
         task.add(new UiGeometry.RoundedRectangle(7F,8F,width,height,6F,
@@ -47,8 +58,7 @@ public final class WatermarkHudRenderer implements HudRenderer {
     @Override public void prepareMask(DrawTask task) {
         ensureConfig();MsdfFontBase font=host.selectedFont();
         if(!config.enabled()||config.style()!=Style.INFORMATIVE)return;
-        String text=String.join("  \u00a77|  \u00a7r",informativeParts());
-        float width=font.width(text,7.5F)+12F,height=font.height(7.5F)+12F;
+        float width=informativeWidth(font),height=informativeHeight(font);
         int tint=color(); // original computes helper even with tint disabled
         task.add(new UiGeometry.RoundedRectangle(7F,8F,width,height,6F,config.tintBackground()?tint:Color.BLACK.getRGB(),host.drawing().markers));
     }
@@ -60,8 +70,19 @@ public final class WatermarkHudRenderer implements HudRenderer {
                 if(config.customTextFont())font.draw(host.componentTextTask(),config.text().replace("&","\u00a7"),9F,2F,2F,color());
                 break;
             case INFORMATIVE:
-                String text=String.join("  \u00a77|\u00a7r  ",informativeParts());
-                font.drawSinglePass(host.componentTextTask(),text,7.5F,13F,14.5F,config.translucentText()?0xbbffffff:-1);
+                int textColor=config.translucentText()?0xbbffffff:-1;
+                int labelColor=(textColor&0x00FFFFFF)|0x99000000;
+                float width=informativeWidth(font);
+                float rowY=13F;
+                font.draw(host.componentTextTask(),host.informativeTitle(),12F,15F,rowY,color());
+                rowY+=font.height(8F)+4F;
+                for(Row row:rows()){
+                    font.draw(host.componentTextTask(),row.label(),8F,12F,rowY,labelColor);
+                    float valueWidth=font.width(row.value(),8F);
+                    font.draw(host.componentTextTask(),row.value(),8F,
+                            CARD_X+width-CARD_PADDING-valueWidth,rowY,textColor);
+                    rowY+=font.height(8F);
+                }
                 break;
             default:break;
         }

@@ -114,7 +114,9 @@ final class LuaPackets {
             C0EPacketClickWindow p = (C0EPacketClickWindow) packet;
             event.set("window_id", LuaValue.valueOf(p.getWindowId()));
             event.set("slot_id", LuaValue.valueOf(p.getSlotId()));
+            event.set("slot", LuaValue.valueOf(p.getSlotId()));
             event.set("mouse_button", LuaValue.valueOf(p.getUsedButton()));
+            event.set("button", LuaValue.valueOf(p.getUsedButton()));
             event.set("mode", LuaValue.valueOf(p.getMode()));
             event.set("action_number", LuaValue.valueOf((int) p.getActionNumber()));
         } else if (packet instanceof C0FPacketConfirmTransaction) {
@@ -202,6 +204,13 @@ final class LuaPackets {
             event.set("window_id", LuaValue.valueOf(p.getWindowId()));
             event.set("action_number", LuaValue.valueOf((int) p.getActionNumber()));
             event.set("accepted", LuaValue.valueOf(p.func_148888_e()));
+        } else if (packet instanceof net.minecraft.network.play.server.S2FPacketSetSlot) {
+            var p=(net.minecraft.network.play.server.S2FPacketSetSlot)packet;
+            event.set("window_id",LuaValue.valueOf(p.func_149175_c()));
+            event.set("slot",LuaValue.valueOf(p.func_149173_d()));
+            event.set("slot_id",LuaValue.valueOf(p.func_149173_d()));
+        } else if (packet instanceof net.minecraft.network.play.server.S30PacketWindowItems) {
+            event.set("window_id",LuaValue.valueOf(((net.minecraft.network.play.server.S30PacketWindowItems)packet).func_148911_c()));
         } else if (packet instanceof S48PacketResourcePackSend) {
             S48PacketResourcePackSend p = (S48PacketResourcePackSend) packet;
             event.set("url", LuaValue.valueOf(p.getURL()));

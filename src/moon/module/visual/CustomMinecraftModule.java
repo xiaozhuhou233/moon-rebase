@@ -173,6 +173,8 @@ public final class CustomMinecraftModule implements ModuleRowWidget.Module {
         DrawTask text=DrawTask.builder(rendering.drawing()).dispatcher(rendering.text()).texture(font::bind).retained().build();
         try{
             for(Text value:texts){
+                // Scoreboard rows keep team/objective formatting codes: §l bolds,
+                // §o skews, §k obfuscates, §m/§n decorate, and §r resets glyph style.
                 if(value.scoreboard)font.draw(text,value.value,SIZE,value.x,value.y,-1,true);
                 else font.draw(text,value.value,SIZE,value.x,value.y,-1);
             }

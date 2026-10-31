@@ -1289,6 +1289,8 @@ public class Minecraft implements IThreadListener, IPlayerUsage {
             this.mcProfiler.endStartSection("mouse");
             while (Mouse.next()) {
                 final int i = Mouse.getEventButton();
+                moon.client.McpModuleServices.mouseButton(i, Mouse.getEventButtonState());
+                if (moon.client.McpModuleServices.cancelMouse(i,Mouse.getEventButtonState())) continue;
                 KeyBinding.setKeyBindState(i - 100, Mouse.getEventButtonState());
                 if (Mouse.getEventButtonState())
                     if (this.thePlayer.isSpectator() && i == 2) this.ingameGUI.getSpectatorGui().func_175261_b();

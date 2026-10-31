@@ -9,6 +9,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.*;
 import moon.module.NativeModule;
 import moon.module.combat.*;
+import moon.module.player.ScaffoldWalkModule;
 import moon.module.combat.killaura.KillAuraSettings.TargetKind;
 import moon.module.combat.killaura.KillAuraTargetSelector.*;
 import moon.module.combat.killaura.KillAuraRotations.Angles;
@@ -42,6 +43,7 @@ public final class McpModuleServices implements AutoCloseable {
     public final moon.module.player.FastPlaceModule fastPlace;
     public final moon.module.player.ScaffoldWalkModule scaffold;
     public final moon.module.player.Sprint sprint;
+    public final moon.module.player.sprint.SprintController sprintController;
     public final moon.module.player.SessionInformationModule session;
     public final moon.module.player.InventoryManagerModule inventory;
     public final moon.module.player.ChestStealerModule chest;
@@ -51,6 +53,9 @@ public final class McpModuleServices implements AutoCloseable {
     private Object world;
     private volatile boolean closed;
     private String lastPending,lastPlayerPending;
+    private final java.util.ArrayDeque<Long> leftClicks=new java.util.ArrayDeque<>(),rightClicks=new java.util.ArrayDeque<>();
+    private long packetWindowStart=System.currentTimeMillis();
+    private int packetsIn,packetsOut,lastPacketsIn,lastPacketsOut;
     private EntityPlayerSP visualPlayer;
     private NativeModule visualSource;
     private Motion visualPrevious,visualCurrent;
@@ -79,14 +84,13 @@ public final class McpModuleServices implements AutoCloseable {
     public McpModuleServices(Minecraft mc,moon.visual.render.DrawServices drawing,MarkerHooks hooks)throws IOException {
         if(instance!=null)throw new IllegalStateException("Native module services already installed");
         this.mc=mc;
+        sprintController=new moon.module.player.sprint.SprintController(mc);
         killAura=new KillAuraModule(new AuraHost(),hooks,new Random());
         velocity=new VelocityModule(mc,hooks);
         backtrack=new moon.module.exploit.BacktrackModule(mc,drawing,hooks);
         fastPlace=new moon.module.player.FastPlaceModule(mc,hooks);
-        scaffold=new moon.module.player.ScaffoldWalkModule(new McpScaffoldHost(mc),hooks);
-        sprint=new moon.module.player.Sprint(mc,hooks,
-            ()->!scaffold.enabled()||scaffold.config.sprint.get()||scaffold.config.tower.get(),
-            ()->killAura.enabled());
+        scaffold=new moon.module.player.ScaffoldWalkModule(new McpScaffoldHost(mc),hooks,sprintController);
+        sprint=new moon.module.player.Sprint(mc,hooks,sprintController);
         
         inventory=new moon.module.player.InventoryManagerModule(mc,()->killAura.target()!=null,hooks);
         chest=new moon.module.player.ChestStealerModule(mc,inventory,hooks);
@@ -98,13 +102,48 @@ public final class McpModuleServices implements AutoCloseable {
         combatCancellations.add(chest::silentActive);
         combatCancellations.add(scaffold::blocksCombat);
         combatCancellations.add(inventory::usingPotion);
-        modules=List.of(killAura,velocity,backtrack,fastPlace,scaffold,sprint,session,chest,inventory);
+        modules=List.of(killAura,velocity,backtrack,fastPlace,sprint,scaffold,session,chest,inventory);
         config=new McpVisualConfigStore(mc.mcDataDir.toPath().resolve("moon/module-config.json"));
         for(NativeModule module:modules)config.bind(module.key(),module.settings(),module::enabled,module::setEnabled);
-        try { config.load(); } catch(IOException failure) { LOG.error("Module config not loaded; original file preserved",failure); }
         instance=this;
+        try { config.load(); } catch(IOException failure) { LOG.error("Module config not loaded; original file preserved",failure); }
     }
     public static McpModuleServices current() { return instance; }
+    /** Raw mouse button edge for the informative watermark CPS L/R row. */
+    public static void mouseButton(int button,boolean pressed){
+        McpModuleServices s=instance;
+        if(s==null||s.closed||!pressed)return;
+        s.click(button);
+    }
+    private synchronized void click(int button){
+        if(button!=0&&button!=1)return;
+        java.util.ArrayDeque<Long> queue=button==0?leftClicks:rightClicks;
+        long now=System.currentTimeMillis();
+        queue.addLast(now);trimClicks(queue,now);
+    }
+    private static void trimClicks(java.util.ArrayDeque<Long> queue,long now){
+        while(!queue.isEmpty()&&now-queue.peekFirst()>=1000L)queue.removeFirst();
+    }
+    public synchronized int leftCps(){
+        long now=System.currentTimeMillis();trimClicks(leftClicks,now);return leftClicks.size();
+    }
+    public synchronized int rightCps(){
+        long now=System.currentTimeMillis();trimClicks(rightClicks,now);return rightClicks.size();
+    }
+    private synchronized void countPacket(boolean inbound){
+        if(inbound)packetsIn++;else packetsOut++;
+        rollPacketWindow(System.currentTimeMillis());
+    }
+    private void rollPacketWindow(long now){
+        if(now-packetWindowStart<1000L)return;
+        lastPacketsIn=packetsIn;lastPacketsOut=packetsOut;
+        packetsIn=packetsOut=0;packetWindowStart=now;
+    }
+    /** Completed one-second packet rates: {in,out}. */
+    public synchronized int[] packetRates(){
+        rollPacketWindow(System.currentTimeMillis());
+        return new int[]{lastPacketsIn,lastPacketsOut};
+    }
     public static boolean renderAuraBlockPose() {
         McpModuleServices services=instance;
         return services!=null&&!services.closed&&services.killAura.rendersBlockPose();
@@ -125,9 +164,11 @@ public final class McpModuleServices implements AutoCloseable {
     }
     public void tick() {
         check();
+        scaffold.tick();
         if(world!=mc.theWorld) { for(NativeModule module:modules)module.worldChanged();world=mc.theWorld;publishVisualMotion(null,null,null); }
         if(!available())killAura.worldChanged();
-        killAura.updateTarget();updateAuraSprint();if(sprint.enabled())sprint.updateSprint();
+        killAura.updateTarget();
+        if(!sprintOwned())updateAuraSprint();
         session.tick();
         try { config.poll(System.currentTimeMillis()); } catch(IOException|RuntimeException failure) { LOG.error("Could not save module settings",failure); }
         String pending=killAura.pendingReason();
@@ -137,28 +178,46 @@ public final class McpModuleServices implements AutoCloseable {
         if(!playerPending.equals("null; null")&&!playerPending.equals(lastPlayerPending))LOG.warn("Player module migration limitations: {}",playerPending);
         lastPlayerPending=playerPending;
     }
-    public record Motion(float yaw,float pitch) { }
+    public record Motion(float yaw,float pitch,double y,boolean onGround) {
+        public Motion(float yaw,float pitch){this(yaw,pitch,Double.NaN,false);}
+    }
     public static Motion walkingPre(EntityPlayerSP player) {
         McpModuleServices services=instance;
-        if(services==null||services.closed||player!=services.mc.thePlayer)return new Motion(player.rotationYaw,player.rotationPitch);
+        if(services==null||services.closed||player!=services.mc.thePlayer)return new Motion(player.rotationYaw,player.rotationPitch,player.getEntityBoundingBox().minY,player.onGround);
         services.check();services.backtrack.motionPre();services.velocity.motionPre();Angles scaffoldAngles=services.scaffold.motionPre();
         services.chest.motionPre();Angles inventoryAngles=services.inventory.motionPre();
         Angles angles=services.killAura.motionPre();NativeModule source=services.killAura;
         if(inventoryAngles!=null){angles=inventoryAngles;source=services.inventory;}
         if(scaffoldAngles!=null){angles=scaffoldAngles;source=services.scaffold;}
         services.publishVisualMotion(player,angles,source);
-        return angles==null?new Motion(player.rotationYaw,player.rotationPitch):new Motion(angles.yaw(),angles.pitch());
+        Motion result=angles==null?new Motion(player.rotationYaw,player.rotationPitch,player.getEntityBoundingBox().minY,player.onGround):new Motion(angles.yaw(),angles.pitch(),player.getEntityBoundingBox().minY,player.onGround);
+        moon.module.player.scaffold.OpenB4Support.RotationManager.lastYaw=result.yaw();
+        moon.module.player.scaffold.OpenB4Support.RotationManager.lastPitch=result.pitch();
+        moon.module.player.scaffold.OpenB4Support.RotationManager.playerYawAtSend=player.rotationYaw;
+        return result;
     }
+    /** Sprint module, or an actively placing Scaffold, owns the vanilla sprint block. */
+    public static boolean moonOwnsSprint(EntityPlayerSP player){
+        McpModuleServices s=instance;
+        return s!=null&&!s.closed&&player==s.mc.thePlayer
+                &&(s.sprint.enabled()||(s.scaffold.enabled()&&s.scaffold.controlsSprint()));
+    }
+    private boolean sprintOwned(){return scaffold.enabled()||sprint.enabled();}
     public static void walkingPost(EntityPlayerSP player) {
         McpModuleServices services=instance;
-        if(services!=null&&!services.closed&&player==services.mc.thePlayer){services.scaffold.motionPost();services.inventory.motionPost();services.killAura.motionPost();}
+        if(services!=null&&!services.closed&&player==services.mc.thePlayer){services.inventory.motionPost();services.killAura.motionPost();}
+    }
+    /** Scaffold places from the pre-move delta, before the walk pose publishes the look. */
+    public static void scaffoldPlace(EntityPlayerSP player){
+        McpModuleServices s=instance;
+        if(s!=null&&!s.closed&&player==s.mc.thePlayer)s.scaffold.motionPlace();
     }
     public record Movement(float yaw,float strafe,float forward) { }
     public static Movement movement(EntityPlayerSP player,float strafe,float forward) {
         McpModuleServices s=instance;
         if(s!=null&&!s.closed&&player==s.mc.thePlayer&&s.scaffold.correctingMovement()){
-            float yaw=s.scaffold.angles().yaw();double angle=Math.toRadians(player.rotationYaw-yaw),sin=Math.sin(angle),cos=Math.cos(angle);
-            return new Movement(yaw,(float)(strafe*cos-forward*sin),(float)(forward*cos+strafe*sin));
+            float yaw=s.scaffold.angles().yaw();float[] fixed=ScaffoldWalkModule.fixedMovement(player.rotationYaw,yaw,forward,strafe);
+            return new Movement(yaw,fixed[1],fixed[0]);
         }
         if(s==null||s.closed||player!=s.mc.thePlayer||!s.available()||!s.killAura.correctingMovement())
             return new Movement(player.rotationYaw,strafe,forward);
@@ -194,7 +253,8 @@ public final class McpModuleServices implements AutoCloseable {
     /** py.a(IZ)/jc.c4: cancellation applies to both press and release state events. */
     public static boolean cancelKeyState(int code) {
         McpModuleServices s=instance;
-        return s!=null&&!s.closed&&s.killAura.enabled()&&!s.killAura.allowsSprintKey()
+        if(s==null||s.closed||s.sprintOwned())return false;
+        return s.killAura.enabled()&&!s.killAura.allowsSprintKey()
                 &&code==s.mc.gameSettings.keyBindSprint.getKeyCode();
     }
     public static float jumpYaw(EntityPlayerSP player) {
@@ -207,18 +267,39 @@ public final class McpModuleServices implements AutoCloseable {
     public static void playerBeforeUpdate(EntityPlayerSP player){
         McpModuleServices s=instance;if(s!=null&&!s.closed&&player==s.mc.thePlayer){s.check();s.velocity.beforeUpdate();s.scaffold.motionBefore();}
     }
-    /** Local MoveEvent displacement; keep vertical movement and vanilla collision resolution. */
+    public static void playerAfterInput(EntityPlayerSP player){
+        McpModuleServices s=instance;
+        if(s!=null&&!s.closed&&player==s.mc.thePlayer){
+            if(s.sprint.enabled()&&s.killAura.enabled()&&s.killAura.target()!=null
+                    &&s.killAura.config.stopSprintOnAttack.get()){
+                s.sprintController.update(false,player.rotationYaw);
+            }else{
+                // Select one owner before applying sprint; Sprint must not start
+                // it just before a scaffold plan stops it in the same tick.
+                s.scaffold.afterInput();
+                if(!s.scaffold.controlsSprint()){
+                    if(s.sprint.enabled())s.sprint.afterInput();
+                    else s.sprintController.releaseControl();
+                }
+            }
+            s.killAura.afterInput();
+        }
+    }
+    public static void renderScaffold(){}
+    public static void renderScaffoldCount(){}
+    public static boolean cancelMouse(int button,boolean pressed){
+        McpModuleServices s=instance;if(s==null||s.closed||s.mc.currentScreen!=null)return false;
+        return s.killAura.openB4.cancelMouse(button,pressed);
+    }
+    /** Clutch freezes horizontal displacement for the placing tick, like the Lua MoveEvent freeze. */
     public static Vec3 scaffoldMove(EntityPlayerSP player,double y){
         McpModuleServices s=instance;
         if(s==null||s.closed||player!=s.mc.thePlayer)return null;
-        var tower=s.scaffold.towerMovement();
-        if(tower==null)return null;
-        float radians=(float)(tower.yaw()*0.017453292519943295);
-        return new Vec3(-MathHelper.sin(radians)*tower.speed(),y,MathHelper.cos(radians)*tower.speed());
+        return s.scaffold.clutchHorizontal()?new Vec3(0,y,0):null;
     }
     public static boolean receiveVelocity(Entity entity,double x,double y,double z,boolean explosion){
         McpModuleServices s=instance;if(s==null||s.closed)return false;
-        s.check();return s.velocity.receive(entity,x,y,z,explosion);
+        s.check();if(entity==s.mc.thePlayer)s.killAura.openB4.damage();return s.velocity.receive(entity,x,y,z,explosion);
     }
     /** Serialize packet state with movement on the client thread. Direct drain uses
      * NetworkManager, bypassing NetHandler's normal observer exactly once. */
@@ -228,20 +309,34 @@ public final class McpModuleServices implements AutoCloseable {
         if(Thread.currentThread()!=s.thread){
             s.mc.addScheduledTask(()->{
                 if(!s.closed&&s.mc.thePlayer!=null&&handler==s.mc.thePlayer.sendQueue
-                    &&!s.scaffold.sprintPacket(new McpScaffoldHost.SprintPacketView(packet)))handler.getNetworkManager().sendPacket(packet);
+                    &&!scaffoldSend(handler,packet))handler.getNetworkManager().sendPacket(packet);
             });
             return true;
         }
-        return s.scaffold.sprintPacket(new McpScaffoldHost.SprintPacketView(packet));
+        McpScaffoldHost.View view=new McpScaffoldHost.View(packet);
+        s.countPacket(false);
+        s.scaffold.outgoing(view);
+        // C02 attacks run before the client attack applies the vanilla sprint slowdown.
+        // INTERACT packets (mount/villager/etc.) must not start a sprint recovery.
+        if (packet instanceof net.minecraft.network.play.client.C02PacketUseEntity use
+                && use.getAction()==net.minecraft.network.play.client.C02PacketUseEntity.Action.ATTACK) {
+            s.sprintController.onAttack();
+        }
+        moon.module.player.scaffold.OpenB4Support.PacketUtils.observe(packet);
+        return s.killAura.outgoing(packet);
     }
     /** Route PLAY traffic to one client-thread queue before applying or delaying packets. */
     @SuppressWarnings({"rawtypes","unchecked"})
     public static boolean receivePlayPacket(net.minecraft.network.NetworkManager manager,net.minecraft.network.INetHandler listener,net.minecraft.network.Packet<?> packet){
         McpModuleServices s=instance;
         if(s==null||s.closed||!(listener instanceof net.minecraft.client.network.NetHandlerPlayClient handler))return false;
+        s.countPacket(true);
         Runnable receive=()->{
             if(s.closed||!manager.isChannelOpen()||handler.getNetworkManager()!=manager)return;
             if(s.mc.getNetHandler()!=null&&s.mc.getNetHandler()!=handler)return;
+            if(packet instanceof net.minecraft.network.play.server.S08PacketPlayerPosLook){
+                moon.module.player.scaffold.OpenB4Support.NoRotateModule.correctedAt=System.currentTimeMillis();s.killAura.correction();
+            }
             scaffoldReceive(manager,packet);
             if(!s.backtrack.receive(handler,packet))((net.minecraft.network.Packet)packet).processPacket(handler);
         };
@@ -263,7 +358,7 @@ public final class McpModuleServices implements AutoCloseable {
         if(s==null||s.closed||s.mc.thePlayer==null||manager!=s.mc.thePlayer.sendQueue.getNetworkManager())return;
         Runnable event=()->{
             if(!s.closed&&s.mc.thePlayer!=null&&manager==s.mc.thePlayer.sendQueue.getNetworkManager())
-                s.scaffold.sprintPacket(new McpScaffoldHost.SprintPacketView(packet));
+                s.scaffold.packetReceive(packet);
         };
         if(Thread.currentThread()==s.thread)event.run();else s.mc.addScheduledTask(event);
     }
@@ -411,6 +506,12 @@ public final class McpModuleServices implements AutoCloseable {
             return hit!=null&&hit.typeOfHit==MovingObjectPosition.MovingObjectType.ENTITY&&hit.entityHit.getEntityId()==entityId;
         }
         public void swingMiss() { if(available())mc.thePlayer.swingItem(); }
+        public void stopSprintOnAttack() {
+            if(!available())return;
+            // Schedule the post-attack Ctrl recovery; do not clear sprint here or the
+            // vanilla sprint-attack slowdown (motion * 0.6 + sprint reset) would be skipped.
+            sprintController.onAttack();
+        }
         public boolean attack(int entityId,boolean realClick,boolean ignoreBlocking) {
             if(!available())return false;
             if(realClick) {
@@ -424,7 +525,7 @@ public final class McpModuleServices implements AutoCloseable {
             if(!(e instanceof EntityLivingBase living)||!living.isEntityAlive())return false;
 
             if(attackCancellations.stream().anyMatch(listener -> listener.test(living)))return false;
-            mc.thePlayer.swingItem();mc.playerController.attackEntity(mc.thePlayer,living);return true;
+            if(killAura.openB4.silentSwing())mc.thePlayer.sendQueue.addToSendQueue(new net.minecraft.network.play.client.C0APacketAnimation());else mc.thePlayer.swingItem();mc.playerController.attackEntity(mc.thePlayer,living);return true;
         }
     }
 }

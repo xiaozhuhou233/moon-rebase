@@ -65,6 +65,7 @@ public final class McpVisualServices implements AutoCloseable,SettingWidgetFacto
     final UiDispatchers.Gradient gradient;
     final UiDispatchers.OutlineRectangle outline;
     final UiDispatchers.ColoredTexture coloredTexture;
+    final UiDispatchers.Texture watermarkTexture;
     final UiDispatchers.RoundedTexture roundedTexture;
     private SettingWidgetTreeRenderer widgets;
     private BezierEditorRenderer curves;
@@ -97,7 +98,9 @@ public final class McpVisualServices implements AutoCloseable,SettingWidgetFacto
     public ModelModifierModule modelModifier;
     public NametagsModule nametags;
     private ModalButton closeButton;
-    private McpClickGuiScreen nativeScreen;
+    private McpClickGuiScreen nativeScreen,modernScreen;
+    private ModernGuiPostProcessor modernPost;
+    private McpClickGuiScreen currentNativeScreen(){return mc.currentScreen instanceof McpClickGuiScreen s?s:null;}
     private McpImGuiBackend imGui;
     private boolean closed;
     private int wheel;
@@ -115,7 +118,7 @@ public final class McpVisualServices implements AutoCloseable,SettingWidgetFacto
             McpVisualServices active=created;
             McpVisualEvents.install(new McpVisualEvents.Binding(created.effects,created.hud.pipeline,created.clickSettings.module(),
                 created::effectsEnabled,created::hudEnabled,created::tick,created::tickPost,created::resize,created,
-                ticks->{active.glow.worldPost(ticks);active.nativeModules.backtrack.render();moon.client.McpModuleServices.renderScaffold();},created::overlayPre,created::prepareNativeOverlay,created::drawNativeOverlay,created::maskNativeOverlay));
+                ticks->{active.glow.worldPost(ticks);active.nativeModules.backtrack.render();moon.client.McpModuleServices.renderScaffold(ticks);},created::overlayPre,created::prepareNativeOverlay,created::drawNativeOverlay,created::maskNativeOverlay));
             instance=created;LOG.info("Visual services initialized: {} (Right Shift opens ClickGUI)",created.profile.ID);
         }catch(Exception|Error failure){
             if(created!=null)try{created.close();}catch(Exception cleanup){failure.addSuppressed(cleanup);}
@@ -201,8 +204,9 @@ public final class McpVisualServices implements AutoCloseable,SettingWidgetFacto
         rectangle=new UiDispatchers.Rectangle(draw);gradient=new UiDispatchers.Gradient(draw);
         outline=new UiDispatchers.OutlineRectangle(draw,()->1);coloredTexture=new UiDispatchers.ColoredTexture(draw);
         roundedTexture=new UiDispatchers.RoundedTexture(draw,()->1);
+        watermarkTexture=new UiDispatchers.Texture(draw);
         try{
-            for(ShaderDispatcher d:new ShaderDispatcher[]{msdf,rounded,rectangle,gradient,outline,coloredTexture,roundedTexture}){
+            for(ShaderDispatcher d:new ShaderDispatcher[]{msdf,rounded,rectangle,gradient,outline,coloredTexture,roundedTexture,watermarkTexture}){
                 d.initialize();if(GL20.glGetProgrami(d.getProgram().getProgram(),GL20.GL_LINK_STATUS)!=1)
                     throw new IOException("UI shader failed: "+d.getClass().getName());
             }
@@ -230,6 +234,9 @@ public final class McpVisualServices implements AutoCloseable,SettingWidgetFacto
                 public ClickGuiModule.NativeScreen createNativeScreen(ClickGuiModule module){
                     return nativeScreen=new McpClickGuiScreen(McpVisualServices.this,clickSettings,profile.screen,System::currentTimeMillis);
                 }
+                public ClickGuiModule.NativeScreen createModernScreen(ClickGuiModule module){
+                    return modernScreen=new McpClickGuiScreen(McpVisualServices.this,clickSettings,profile.screen,System::currentTimeMillis,true);
+                }
                 public ClickGuiModule.Screen createImGuiScreen(){
                     if(imGui==null)imGui=new McpImGuiBackend(mc.mcDataDir.toPath());
                     return new McpImGuiScreen(McpVisualServices.this,imGui);
@@ -239,7 +246,7 @@ public final class McpVisualServices implements AutoCloseable,SettingWidgetFacto
                 public Object createUiColor(int argb){return uiColor(argb);}
                 public void applyGlobalColor(int argb){/* Other destinations may subscribe; config remains authoritative here. */}
                 public void invokeOriginalModuleE(){/* Migration opener is an action, not a persistent enabled module. */}
-            },()->true,mode->mode==ClickGuiModule.Mode.DEFAULT?"Default":"ImGui");
+            },()->true,ClickGuiModule.Mode::displayName);
             hudSettings=new HudSettings(hooks,new HudSettings.Labels(){
                 public String colorMode(HudSettings.ColorMode value){return value.name();}
                 public String textCase(HudSettings.TextCase value){return value.name();}
@@ -295,7 +302,7 @@ public final class McpVisualServices implements AutoCloseable,SettingWidgetFacto
             visualModules.add(camera);
             visualModules.add(esp);
             visualModules.add(richPresence);
-            visualModules.add(new VisualModule("ClickGUI",clickSettings.roots(),()->mc.currentScreen==nativeScreen,()->clickSettings.module().openSelectedScreen()));
+            visualModules.add(new VisualModule("ClickGUI",clickSettings.roots(),()->currentNativeScreen()!=null,()->clickSettings.module().openSelectedScreen()));
             closeButton=ModalButton.sharedClose(this,"Close");
             config=new McpVisualConfigStore(mc.mcDataDir.toPath().resolve("moon/visual-config.json"));
             config.bind("effects",effectsSettings.roots(),()->effectsEnabled,value->effectsEnabled=value);
@@ -353,8 +360,8 @@ public final class McpVisualServices implements AutoCloseable,SettingWidgetFacto
         if(nativeModules!=null)nativeModules.tick();
         if(mc.theWorld==null)glow.resized();
         if(config!=null)try{config.poll(System.currentTimeMillis());}catch(IOException|RuntimeException failure){LOG.error("Could not save visual settings",failure);}
-        if(luaModules.refresh(scriptModules)&&nativeScreen!=null&&nativeScreen.controller().getScriptsPanel()!=null)
-            nativeScreen.controller().getScriptsPanel().initialize();
+        if(luaModules.refresh(scriptModules))for(McpClickGuiScreen screen:new McpClickGuiScreen[]{nativeScreen,modernScreen})
+            if(screen!=null&&screen.controller().getScriptsPanel()!=null)screen.controller().getScriptsPanel().initialize();
         bindings.reconcileHeld(Keyboard::isKeyDown);
     }
     private void tickPost(){timeChanger.tick();camera.tick();hud.tickPost();}
@@ -363,6 +370,7 @@ public final class McpVisualServices implements AutoCloseable,SettingWidgetFacto
         if(pointers.enabled()){pointers.prepare(partialTicks);pointers.draw();}
     }
     private net.minecraft.entity.EntityLivingBase targetHudTarget(){
+        if(nativeModules!=null&&nativeModules.myau.killAura.enabled())return nativeModules.myau.target();
         if(nativeModules==null||mc.theWorld==null||!nativeModules.killAura.enabled())return null;
         var target=nativeModules.killAura.target();
         if(target==null)return null;
@@ -389,6 +397,22 @@ public final class McpVisualServices implements AutoCloseable,SettingWidgetFacto
     @Override public void renderFrame(Runnable drawing){
         try(LwjglDrawBackend.TransientMemoryScope scope=backend.transientMemoryScope()){drawing.run();}
     }
+    public int guiWidth(){return scaledWidth();}
+    public void renderModernBlur(Runnable mask){
+        if(!effectsEnabled||!effectsSettings.blurEnabled.get())return;
+        try(McpLuaRenderer.DrawState saved=new McpLuaRenderer.DrawState()){
+            if(modernPost==null)modernPost=new ModernGuiPostProcessor(new LwjglPostProcessBackend.Host(){
+                public boolean isWindowVisible(){return true;}
+                public int displayWidth(){return mc.displayWidth;}public int displayHeight(){return mc.displayHeight;}
+                public double scaledWidth(){return McpVisualServices.this.scaledWidth();}public double scaledHeight(){return McpVisualServices.this.scaledHeight();}
+                public PostProcessBackend.Framebuffer mainFramebuffer(){return main;}
+                public void publishMaskEvent(boolean shadow){}
+                public void prepareComposite(){mc.entityRenderer.setupOverlayRendering();GlStateManager.color(1,1,1,1);}
+            },state,draw,backend);
+            GlStateManager.disableDepth();
+            modernPost.render(mask,effectsSettings.blurIterations.get(),effectsSettings.blurOffset.get().floatValue());
+        }catch(IOException failure){throw new IllegalStateException("Modern post processing initialization failed",failure);}
+    }
     public void mouseWheel(int delta){wheel+=delta;}
     public CategoryPanel.Host categoryHost(){return this;}
     public List<? extends CategoryPanel.Category> categories(){return Arrays.asList(combat,player,exploit,visual,scripts);}
@@ -398,16 +422,17 @@ public final class McpVisualServices implements AutoCloseable,SettingWidgetFacto
     public CategoryPanel.Parameters categoryParameters(){return profile.category;}
     public ShaderUniform.MarkerHooks markers(){return hooks;}
     public SettingWidgetFactory.Drawing drawing(){return widgets;}
-    public McpVisualProfile.Palette uiColor(int argb){return profile.palette(argb);}
+    public McpVisualProfile.Palette uiColor(int argb){return clickSettings!=null&&clickSettings.mode.get()==ClickGuiModule.Mode.MODERN?profile.modernPalette(argb):profile.palette(argb);}
+    public String bindingLabel(ModuleRowWidget.Module module){return bindings==null||!bindings.hasBinding(module)?"":Keyboard.getKeyName(bindings.key(module));}
     public ClickGuiWidget.Config clickGuiConfig(){return clickSettings;}
     public MsdfFontBase interMedium(){return font("inter_medium");}public MsdfFontBase interSemiBold(){return font("Inter-SemiBold");}
     public MsdfFontBase materialIcons(){return font("MaterialIcons-Regular");}public MsdfFontBase robotoMedium(){return font("Roboto-Medium");}
     public int framesPerSecond(){return Minecraft.getDebugFPS();}public int animationFpsFloor(){return profile.fpsFloor;}
     public int scaledWidth(){return new ScaledResolution(mc).getScaledWidth();}public int scaledHeight(){return new ScaledResolution(mc).getScaledHeight();}
     public float scaledScreenHeight(){return scaledHeight();}public CategoryPanel.ScaledScreen scaledScreen(){return ()->scaledHeight();}
-    public boolean childAnimationsActive(){return nativeScreen!=null&&nativeScreen.controller().animation(false).isFinished();}
+    public boolean childAnimationsActive(){var screen=currentNativeScreen();return screen!=null&&screen.controller().animation(false).isFinished();}
     public BooleanSupplier childAnimationState(){
-        TimedAnimation animation=nativeScreen==null?null:nativeScreen.controller().animation(false);return ()->animation!=null&&animation.isFinished();
+        var screen=currentNativeScreen();TimedAnimation animation=screen==null?null:screen.controller().animation(false);return ()->animation!=null&&animation.isFinished();
     }
     public int pollWheel(){int value=wheel;wheel=0;return value;}
     public int categoryBackground(Object theme){return ((McpVisualProfile.Palette)theme).panel();}
@@ -419,16 +444,18 @@ public final class McpVisualServices implements AutoCloseable,SettingWidgetFacto
     public boolean isOriginalDmShadow(Object event){return Boolean.TRUE.equals(event);}
     public void enableBlend(){GlStateManager.enableBlend();}public void blendFunc(int s,int d){GlStateManager.blendFunc(s,d);}
     public ModalOverlay.Scheme modalScheme(){return uiColor(clickSettings.colorArgb());}
-    public ModalConfiguration.Screen screen(){return nativeScreen;}
+    public ModalConfiguration.Screen screen(){return currentNativeScreen();}
     public ModalConfiguration.Screen activeScreen(){return (ModalConfiguration.Screen)mc.currentScreen;}
     public BezierEditor createEditor(BezierSetting setting){return new BezierEditor(setting,curves,profile.curve,hooks);}
     public ModalOverlay createOverlay(ModalConfiguration configuration){
+        var nativeScreen=currentNativeScreen();
+        boolean modern=nativeScreen!=null&&nativeScreen.controller().isModern();float padding=modern?20F:16F;
         // Destination placement policy: original kr centers on the launching row,
         // which can put the curve title/close button outside a small viewport.
         ModalConfiguration bounded=ModalConfiguration.builder(hooks).title(configuration.getTitle()).description(configuration.getDescription())
             .content(configuration.getContent()).buttons(configuration.getButtons()).screen(configuration.getScreen())
-            .x(()->modalCenter(configuration.getX().get(),Math.max(configuration.getContent().getWidth()+16F,200F),scaledWidth()))
-            .y(()->modalCenter(configuration.getY().get(),configuration.getContent().getHeight()+52F+robotoMedium().height(7F)+robotoMedium().height(12F),scaledHeight())).build();
+            .x(()->modalCenter(configuration.getX().get(),Math.max(configuration.getContent().getWidth()+padding,200F),scaledWidth()))
+            .y(()->modalCenter(configuration.getY().get(),configuration.getContent().getHeight()+36F+padding+robotoMedium().height(7F)+robotoMedium().height(12F),scaledHeight())).build();
         return new ModalOverlay(this,bounded,profile.modal,System::currentTimeMillis);
     }
     private static float modalCenter(float requested,float extent,int available){
@@ -438,6 +465,8 @@ public final class McpVisualServices implements AutoCloseable,SettingWidgetFacto
     public ModalButton sharedCloseButton(){return closeButton;}
     public ModalOverlay.Drawing modalDrawing(){return new ModalOverlay.Drawing(){
         public DrawTask roundedTask(){return widgets.roundedTask();}public DrawTask msdfTask(MsdfFontBase font){return widgets.msdfTask(font);}
+        public DrawTask outlineTask(){return widgets.outlineTask();}
+        public DrawTaskState.Geometry outline(float x,float y,float w,float h,float radius,float thickness,int color){return widgets.outline(x,y,w,h,radius,thickness,color);}
         public DrawTaskState.Geometry rounded(float x,float y,float w,float h,float radius,int color){return widgets.rounded(x,y,w,h,radius,color);}
     };}
     public String readClipboard(){return GuiScreen.getClipboardString();}public void writeClipboard(String text){GuiScreen.setClipboardString(text);}
@@ -450,7 +479,7 @@ public final class McpVisualServices implements AutoCloseable,SettingWidgetFacto
     }
     /** Render-thread addon API; duration is in milliseconds. */
     public void notify(NotificationType type,String title,String message,long duration){notifications.publish(type,title,message,duration);}
-    public int liveOwnedResources(){return (sessionHud==null?0:sessionHud.liveTextures())+(camera==null?0:camera.liveFramebuffers())+(imGui==null?0:imGui.liveResources())+backend.liveResources()+textures.liveTextures()+(post==null?0:post.liveDrawResources()+post.liveFramebuffers())+(stencilOwner==null?0:stencilOwner.liveAttachments())+(glow==null?0:glow.liveFramebuffers()+glow.liveAdditionalTextures());}
+    public int liveOwnedResources(){return (modernPost==null?0:modernPost.liveFramebuffers())+(sessionHud==null?0:sessionHud.liveTextures())+(camera==null?0:camera.liveFramebuffers())+(imGui==null?0:imGui.liveResources())+backend.liveResources()+textures.liveTextures()+(post==null?0:post.liveDrawResources()+post.liveFramebuffers())+(stencilOwner==null?0:stencilOwner.liveAttachments())+(glow==null?0:glow.liveFramebuffers()+glow.liveAdditionalTextures());}
     @Override public void close(){
         if(closed)return;backend.requireOpen();closed=true;
         // Capture enabled states before native/Lua shutdown disables modules.
@@ -459,6 +488,7 @@ public final class McpVisualServices implements AutoCloseable,SettingWidgetFacto
         if(nativeModules!=null)try{nativeModules.close();}catch(RuntimeException failure){LOG.error("Native module cleanup failed",failure);}
         dev.pier.lua.LuaManager.get().shutdown();
         LOG.info("Closing visual resources: {}",liveOwnedResources());
+        if(modernPost!=null)modernPost.close();
         if(richPresence!=null)richPresence.close();
         if(sessionHud!=null)sessionHud.close();
         if(blockAnimations!=null)blockAnimations.close();

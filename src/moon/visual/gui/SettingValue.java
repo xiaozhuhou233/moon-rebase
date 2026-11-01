@@ -15,6 +15,7 @@ public abstract class SettingValue<T> {
     private String displayName;
     private final Type type;
     private BiConsumer<T,T> callback;
+    private java.util.function.UnaryOperator<T> normalizer;
     private Supplier<Boolean> visibility=()->true;
     private String description;
     private boolean grouped;
@@ -27,6 +28,7 @@ public abstract class SettingValue<T> {
         if(captured==null) markers.setMarker("GDEK4b");
     }
     public void set(T value) {
+        if(normalizer!=null)value=normalizer.apply(value);
         Object[] captured=getSentinel();
         if(captured!=null&&callback!=null) callback.accept(this.value,value);
         this.value=value;
@@ -50,6 +52,8 @@ public abstract class SettingValue<T> {
     public Supplier<Boolean> getGroupVisibility() { return groupVisibility; }
     public SettingValue<T> setDisplayName(String value) { displayName=value;return this; }
     public SettingValue<T> setCallback(BiConsumer<T,T> value) { callback=value;return this; }
+    /** Destination adapters may validate a value before callbacks and commit. */
+    public SettingValue<T> setNormalizer(java.util.function.UnaryOperator<T> value) { normalizer=value;return this; }
     public SettingValue<T> setVisibility(Supplier<Boolean> value) { visibility=value;return this; }
     public SettingValue<T> setDescription(String value) { description=value;return this; }
     public SettingValue<T> setGrouped(boolean value) { grouped=value;return this; }

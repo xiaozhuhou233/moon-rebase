@@ -178,39 +178,15 @@ final class McpHudServices implements AutoCloseable {
     private record Effect(PotionEffect effect) implements PotionHudRenderer.Effect {public int amplifier(){return effect.getAmplifier();}}
     private final class WatermarkHost extends Common implements WatermarkHudRenderer.Host {
         public WatermarkHudRenderer.Config findHudConfig(){return visual.hudSettings.watermarkConfig();}
-        public ShaderDispatcher textureDispatcher(){return visual.coloredTexture;}
+        public ShaderDispatcher textureDispatcher(){return visual.watermarkTexture;}
+        public ShaderDispatcher iconDispatcher(){return visual.msdf;}
+        public MsdfFontBase iconFont(){return visual.materialIcons();}
+        public boolean blurEnabled(){return visual.effectsEnabled&&visual.effectsSettings.blurEnabled.get();}
+        public void setLogoLinearSampling(){
+            org.lwjgl.opengl.GL11.glTexParameteri(3553,10241,9729);
+            org.lwjgl.opengl.GL11.glTexParameteri(3553,10240,9729);
+        }
         public void enableTexture2D(){GlStateManager.enableTexture2D();}
-        public String informativeTitle(){
-            var server=visual.mc.getCurrentServerData();
-            if(server==null)return "Singleplayer";
-            if(server.serverName!=null&&!server.serverName.isEmpty())return server.serverName;
-            return server.serverIP==null||server.serverIP.isEmpty()?"Singleplayer":server.serverIP;
-        }
-        /** Original hj card: AC, CPS L/R, BPS, PPS I/O, TB, player state and host. */
-        public List<WatermarkHudRenderer.Row> informativeRows(){
-            var player=visual.mc.thePlayer;
-            if(player==null)return List.of();
-            McpModuleServices services=McpModuleServices.current();
-            int leftCps=0,rightCps=0,inPps=0,outPps=0;
-            if(services!=null){
-                leftCps=services.leftCps();rightCps=services.rightCps();
-                int[] rates=services.packetRates();inPps=rates[0];outPps=rates[1];
-            }
-            double bps=Math.hypot(player.posX-player.prevPosX,player.posZ-player.prevPosZ)*20D;
-            var server=visual.mc.getCurrentServerData();
-            List<WatermarkHudRenderer.Row> rows=new ArrayList<>();
-            rows.add(new WatermarkHudRenderer.Row("AC",""));
-            rows.add(new WatermarkHudRenderer.Row("CPS L/R",leftCps+"/"+rightCps));
-            rows.add(new WatermarkHudRenderer.Row("BPS",String.format(Locale.ROOT,"%.2f",bps)));
-            rows.add(new WatermarkHudRenderer.Row("PPS I/O",inPps+"/"+outPps));
-            rows.add(new WatermarkHudRenderer.Row("TB","0ms"));
-            rows.add(new WatermarkHudRenderer.Row("Blocking",String.valueOf(player.isBlocking())));
-            rows.add(new WatermarkHudRenderer.Row("Sprinting",String.valueOf(player.isSprinting())));
-            rows.add(new WatermarkHudRenderer.Row("Sneaking",String.valueOf(player.isSneaking())));
-            rows.add(new WatermarkHudRenderer.Row("On ground",String.valueOf(player.onGround)));
-            rows.add(new WatermarkHudRenderer.Row("Host",server==null?"Singleplayer":String.valueOf(server.serverIP)));
-            return rows;
-        }
         public WatermarkHudRenderer.ServerData serverData(){
             var server=visual.mc.getCurrentServerData();return server==null?null:()->server.serverIP;
         }

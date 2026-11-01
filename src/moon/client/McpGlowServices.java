@@ -52,7 +52,6 @@ public final class McpGlowServices implements AutoCloseable {
     };
     public McpGlowServices(McpVisualServices visual)throws IOException{
         this.visual=visual;mc=visual.mc;settings=new GlowSettings(visual.hooks,visual.profile);
-        settings.synchronizeShadow(visual.effectsSettings.shadowIterations::get,()->visual.effectsSettings.shadowOffset.get().floatValue(),()->visual.effectsEnabled&&visual.effectsSettings.shadowEnabled.get());
         try{
         colors=new GlowMaskColorEnvironment(new LwjglGlowMaskColorBackend(visual.state,OpenGlHelper::setLightmapTextureCoords,
             new LwjglGlowMaskColorBackend.Shaders(){

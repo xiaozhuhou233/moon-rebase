@@ -28,6 +28,7 @@ public final class ModuleRowWidget extends SettingWidget {
         float scaledScreenHeight();
         /** Capture l9.a(false) once per traversal, then call k9.a() before and after each child. */
         BooleanSupplier childAnimationState();
+        default String bindingLabel(Module module){return "";}
     }
     private final Host rowHost;
     private final Module module;
@@ -36,7 +37,9 @@ public final class ModuleRowWidget extends SettingWidget {
     private final MsdfFontBase titleFont;
     private final FrameAnimation enabledAnimation,heightAnimation;
     private final List<SettingWidget> children=new ArrayList<>();
-    private boolean expanded,positionChanging,snapChildren,roundedStyle;
+    private boolean expanded,positionChanging,snapChildren,roundedStyle,modern;
+    public void setModern(boolean value){modern=value;}
+    public void prepareModernLayout(){if(modern)layoutChildren();}
     private float targetHeight;
     private int originalUnusedIndex;
 
@@ -66,7 +69,8 @@ public final class ModuleRowWidget extends SettingWidget {
     }
     @Override public void refreshColor() { children.forEach(SettingWidget::refreshColor);super.refreshColor(); }
     @Override public void update(int mouseX,int mouseY) {
-        String captured=getSentinel();drawBackground();drawTitle();layoutChildren();
+        String captured=getSentinel();
+        drawBackground();drawTitle();if(!modern)layoutChildren();
         if(captured==null||shouldVisitChildren()) visitChildren(mouseX,mouseY,false);
         super.update(mouseX,mouseY);
     }
@@ -74,8 +78,16 @@ public final class ModuleRowWidget extends SettingWidget {
         String captured=getSentinel();if(captured==null||shouldVisitChildren()) visitChildren(mouseX,mouseY,true);
         super.overlay(mouseX,mouseY);
     }
-    private boolean shouldVisitChildren() { return expanded||heightAnimation.get()>(roundedStyle?22.5F:24.5F); }
+    private boolean shouldVisitChildren() { return expanded||heightAnimation.get()>(modern?23.5F:roundedStyle?22.5F:24.5F); }
     private void drawBackground() {
+        if(modern){
+            enabledAnimation.update(module.enabled()?1F:0F,.3D);
+            DrawTask task=rowHost.drawing().roundedTask();
+            // RoundedRectangle's non-smooth branch insets its quad by .5 on each side.
+            // Compensate that inset as well as disabling smoothing on shared row edges.
+            if(expanded)task.add(rowHost.drawing().rounded(x-.5F,targetY-.5F,width+1F,height+1F,0F,0x40202020,false,false,false,false,false));
+            task.add(rowHost.drawing().rounded(x-.5F,targetY-.5F,width+1F,(expanded?23F:height)+1F,0F,new ArgbColor(config.colorArgb()).withAlpha(enabledAnimation.get()).getRGB(),false,false,false,false,false));task.draw();return;
+        }
         String captured=getSentinel();
         enabledAnimation.update(module.enabled()?1F:0F,.30000001192092896D);
         DrawTask task=rowHost.drawing().roundedTask();
@@ -87,6 +99,18 @@ public final class ModuleRowWidget extends SettingWidget {
         task.draw();
     }
     private void drawTitle() {
+        if(modern){
+            DrawTask task=rowHost.drawing().msdfTask(titleFont);
+            titleFont.draw(task,module.displayName(),8.5F,x+7F,targetY+7.5F,module.enabled()?-1:0xff929292,false);
+            String bind=rowHost.bindingLabel(module);
+            if(!bind.isEmpty())titleFont.draw(task,bind,5.5F,x+width-20F-titleFont.width(bind,5.5F),targetY+9F,-1,false);
+            task.draw();
+            if(!children.isEmpty()&&rowHost instanceof CategoryPanel.Host categoryHost){
+                MsdfFontBase icons=categoryHost.materialIcons();DrawTask arrow=rowHost.drawing().msdfTask(icons);
+                icons.draw(arrow,expanded?"\ue5df":"\ue5c5",9F,x+width-14F,targetY+8F,-1,false);arrow.draw();
+            }
+            return;
+        }
         String captured=getSentinel();
         DrawTask task=rowHost.drawing().msdfTask(titleFont);
         float textWidth=titleFont.width(module.displayName(),9.3F),textY=targetY+(roundedStyle?6.25F:7.75F);
@@ -98,7 +122,7 @@ public final class ModuleRowWidget extends SettingWidget {
     }
     private void layoutChildren() {
         String captured=getSentinel();
-        float childX=getX(),childY=getTargetY()+(roundedStyle?26.5F:29F),total=0F,minimum=roundedStyle?22F:24F;
+        float childX=getX(),childY=getTargetY()+(modern?28F:roundedStyle?26.5F:29F),total=0F,minimum=modern?23F:roundedStyle?22F:24F;
         int visible=0;
         for(SettingWidget child:children) {
             child.setX(childX);child.setTargetY(childY);
@@ -187,9 +211,9 @@ public final class ModuleRowWidget extends SettingWidget {
             if((hitTest(mouseX,mouseY,x,targetY,width,height)||child instanceof StringSettingWidget||child instanceof BezierSettingWidget)
                 &&isExpanded()&&child.mouseClicked(mouseX,mouseY,button)) return true;
         }
-        if(hitTest(mouseX,mouseY,x,targetY,width,20F)
-            &&hitTest(mouseX,mouseY,x,category.getY()+25F,width,category.getHeight()-25F)) {
-            if(button==0) module.toggle();
+        if(hitTest(mouseX,mouseY,x,targetY,width,modern?23F:20F)
+            &&hitTest(mouseX,mouseY,x,category.getY()+(modern?28F:25F),width,category.getHeight()-(modern?28F:25F))) {
+            if(button==0&&(!modern||mouseX<x+width-18F)) module.toggle();
             else {
                 boolean any=children.stream().anyMatch(SettingWidget::isVisible);
                 if(!expanded&&!any) return super.mouseClicked(mouseX,mouseY,button);

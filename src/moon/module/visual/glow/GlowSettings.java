@@ -22,10 +22,6 @@ public final class GlowSettings implements GlowEntityMaskPass.Config,GlowBlurPas
     public final ColorSetting player,animal,mob,hurt;
     public final SettingGroup intensity,colors;
     public final ShadowStyle shadowColor;
-    private java.util.function.Supplier<Integer> effectIterations;
-    private java.util.function.Supplier<Float> effectOffset;
-    private java.util.function.BooleanSupplier effectEnabled=()->true;
-    public void synchronizeShadow(java.util.function.Supplier<Integer> iterations,java.util.function.Supplier<Float> offset,java.util.function.BooleanSupplier enabled){effectIterations=iterations;effectOffset=offset;effectEnabled=enabled;}
     public final EspSettings esp;
     private final List<SettingValue<?>> roots;
     public GlowSettings(MarkerHooks hooks,McpVisualProfile profile){
@@ -40,7 +36,7 @@ public final class GlowSettings implements GlowEntityMaskPass.Config,GlowBlurPas
         offset=FloatSetting.builder("glow-radius",hooks).configure("Offset",2,1,10,.1F).visibility(blur::get).build();
         exposure=FloatSetting.builder("glow-alpha",hooks).configure("Exposure",1,1,3,.1F).visibility(blur::get).build();
         cutInside=BooleanSetting.builder("glow-cut-inside",hooks).configure("Cut Entity",false).visibility(blur::get).build();
-        intensity=SettingGroup.builder(hooks).configure("Intensity Settings",radius,alphaCurve,blur,exposure,cutInside).visibility(glow::get).build();
+        intensity=SettingGroup.builder(hooks).configure("Intensity Settings",radius,alphaCurve,blur,iterations,offset,exposure,cutInside).visibility(glow::get).build();
         player=ColorSetting.builder("glow-player-color",hooks).configure("Player Color",-1).visibility(()->targets.isSelected(Target.PLAYER)).build();
         animal=ColorSetting.builder("glow-animal-color",hooks).configure("Animal Color",-1).visibility(()->targets.isSelected(Target.ANIMAL)).build();
         mob=ColorSetting.builder("glow-mobs-color",hooks).configure("Mobs Color",-1).visibility(()->targets.isSelected(Target.MOB)).build();
@@ -55,7 +51,7 @@ public final class GlowSettings implements GlowEntityMaskPass.Config,GlowBlurPas
     public Boolean primaryEnabled(){return glow.get();}public Boolean secondaryEnabled(){return esp.outline.get();}
     public Integer hurtColor(){return hurt.get();}public Integer mobColor(){return mob.get();}
     public Integer animalColor(){return animal.get();}public Integer playerColor(){return player.get();}
-    public Integer iterations(){return effectIterations==null?iterations.get():effectIterations.get();}public Float offset(){return effectOffset==null?offset.get():effectOffset.get();}
+    public Integer iterations(){return iterations.get();}public Float offset(){return offset.get();}
     public Float alpha(){return exposure.get();}public Boolean stencil(){return cutInside.get();}
-    public Boolean blur(){return blur.get();}public Boolean enabled(){return glow.get()&&effectEnabled.getAsBoolean();}
+    public Boolean blur(){return blur.get();}public Boolean enabled(){return glow.get();}
 }

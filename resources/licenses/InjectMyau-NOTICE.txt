@@ -1,0 +1,13 @@
+This port incorporates Java source from the user-provided InjectMyau-main.zip.
+Upstream project: InjectMyau (GPL-3.0).
+Full license: InjectMyau-GPL-3.0.txt in this directory.
+
+The KillAura and Scaffold algorithms and their movement/rotation utilities are
+located in src/moon/port/myau/. Original package names were relocated to
+moon.port.myau. LWJGL input imports use the destination org.lwjglx bridge.
+Moon-specific lifecycle, settings, config, event and rendering adaptations are
+in src/moon/client/McpMyauModules.java and the Minecraft integration hooks.
+
+No injector, DLL, native bootstrap or Forge runtime from the archive is used.
+Optional upstream modules outside the requested KillAura/Scaffold scope are
+represented as disabled/uninstalled in MyauPeers.java.

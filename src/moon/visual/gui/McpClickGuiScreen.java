@@ -19,13 +19,19 @@ public final class McpClickGuiScreen extends GuiScreen implements ClickGuiModule
 
     public McpClickGuiScreen(NativeClickGuiScreen.Services services,NativeClickGuiScreen.Config config,
                             NativeClickGuiScreen.Parameters parameters,LongSupplier clock) {
-        this.services=services;controller=new NativeClickGuiScreen(new Bridge(services),config,parameters,clock);
+        this(services,config,parameters,clock,false);
+    }
+    public McpClickGuiScreen(NativeClickGuiScreen.Services services,NativeClickGuiScreen.Config config,
+                            NativeClickGuiScreen.Parameters parameters,LongSupplier clock,boolean modern) {
+        this.services=services;controller=new NativeClickGuiScreen(new Bridge(services),config,parameters,clock,modern);
     }
     /** jK invokes this once before Minecraft.displayGuiScreen; it is not initGui. */
     @Override public void initialize(){controller.initialize();}
     /** Minecraft invokes this again on resize/reopen without reconstructing the category tree. */
     @Override public void initGui(){controller.initializeScreen();}
-    @Override public void drawScreen(int mouseX,int mouseY,float partialTicks){services.renderFrame(()->controller.drawScreen(mouseX,mouseY,partialTicks));}
+    @Override public void drawScreen(int mouseX,int mouseY,float partialTicks){
+        moon.client.McpLuaRenderer.renderHud(()->services.renderFrame(()->controller.drawScreen(mouseX,mouseY,partialTicks)));
+    }
     @Override public void handleMouseInput()throws IOException {
         super.handleMouseInput();services.mouseWheel(org.lwjglx.input.Mouse.getEventDWheel());
     }
@@ -65,6 +71,8 @@ public final class McpClickGuiScreen extends GuiScreen implements ClickGuiModule
         private final NativeClickGuiScreen.Services services;
         Bridge(NativeClickGuiScreen.Services services){this.services=services;}
         public CategoryPanel.Host categoryHost(){return services.categoryHost();}
+        public int guiWidth(){return services.guiWidth();}
+        public void renderModernBlur(Runnable mask){services.renderModernBlur(mask);}
         public List<? extends CategoryPanel.Category> categories(){return services.categories();}
         public boolean isScriptsCategory(CategoryPanel.Category c){return services.isScriptsCategory(c);}
         public GroupSettingWidget.Factory settingFactory(){return services.settingFactory();}

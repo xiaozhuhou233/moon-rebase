@@ -274,6 +274,9 @@ public class EntityRenderer implements IResourceManagerReloadListener {
 	 * Updates the entity renderer
 	 */
 	public void updateRenderer() {
+        try(var moonSlot=moon.client.McpModuleServices.spoofedRenderSlot()){moonUpdateRenderer();}
+    }
+    private void moonUpdateRenderer() {
 		if (OpenGlHelper.shadersSupported && ShaderLinkHelper.getStaticShaderLinkHelper() == null) ShaderLinkHelper.setNewStaticShaderLinkHelper();
 		this.updateFovModifierHand();
 		this.updateTorchFlicker();
@@ -811,6 +814,9 @@ public class EntityRenderer implements IResourceManagerReloadListener {
 	}
 
 	public void updateCameraAndRender(final float partialTicks, final long nanoTime) {
+        try(var moonSlot=moon.client.McpModuleServices.spoofedRenderSlot()){moonUpdateCameraAndRender(partialTicks,nanoTime);}
+    }
+    private void moonUpdateCameraAndRender(final float partialTicks, final long nanoTime) {
 		Config.renderPartialTicks = partialTicks;
 		this.frameInit();
 		final boolean flag = Display.isActive();

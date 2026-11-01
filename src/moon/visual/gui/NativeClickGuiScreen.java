@@ -11,7 +11,8 @@ import moon.module.visual.EffectsModule;
 import moon.visual.render.RenderTransformState;
 import moon.visual.shader.ShaderUniform.MarkerHooks;
 
-/** l9 both captured mT paths, including mo/mp's actual three-entry animation maps.
+/** Material controller for l9/DEFAULT pj; pk screen policy uses the same live setting adapters.
+ * Modern screen/category geometry follows pk/ns/nr; module setting widgets remain destination adapters.
  * MCP GuiScreen super calls, input codes and module lookup remain explicit host boundaries.
  * Original animation durations and blend integers are mandatory parameters, not guessed constants.
  */
@@ -24,11 +25,16 @@ public final class NativeClickGuiScreen implements ClickGuiModule.NativeScreen,M
     public interface Config extends ClickGuiWidget.Config {
         boolean openingAnimation();boolean closingAnimation();
         Easing openingEasing();Easing closingEasing();
+        default float modernScale(){return 1F;}
+        default boolean modernCenter(){return false;}
+        default boolean modernPostProcessing(){return false;}
     }
     /** Renderer/module services shared by the plain controller and MCP GuiScreen adapter. */
     public interface Services {
         /** Actual kz/kA host, sharing the same config and module/setting tree. */
         CategoryPanel.Host categoryHost();
+        default int guiWidth(){return 800;}
+        default void renderModernBlur(Runnable mask){}
         List<? extends CategoryPanel.Category> categories();
         boolean isScriptsCategory(CategoryPanel.Category category);
         GroupSettingWidget.Factory settingFactory();
@@ -78,12 +84,29 @@ public final class NativeClickGuiScreen implements ClickGuiModule.NativeScreen,M
     private final List<ClickGuiWidget> widgets=new ArrayList<>();
     private final Map<Easing,TimedAnimation> fadeAnimations=new HashMap<>(),scaleAnimations=new HashMap<>();
     private ModalOverlay modal;
+    /** nw is exactly a deferred nt.a(mouseX, mouseY) call, not a second modal. */
+    public record DeferredOverlay(java.util.function.BiConsumer<Integer,Integer> renderer,int mouseX,int mouseY){
+        public void draw(){renderer.accept(mouseX,mouseY);}
+    }
+    private DeferredOverlay deferredOverlay;
+    public void deferOverlay(java.util.function.BiConsumer<Integer,Integer> renderer,int mouseX,int mouseY){
+        deferredOverlay=new DeferredOverlay(java.util.Objects.requireNonNull(renderer),mouseX,mouseY);
+    }
     private boolean closing;
+    private boolean modern;
     private EffectsModule effects;
     private CategoryPanel scriptsPanel;
 
     public NativeClickGuiScreen(Host host,Config config,Parameters parameters,LongSupplier clock) {
         this(host,config,parameters,clock,NORMAL_GUARD);
+    }
+    public NativeClickGuiScreen(Host host,Config config,Parameters parameters,LongSupplier clock,boolean modern) {
+        this(host,config,parameters,clock,NORMAL_GUARD);this.modern=modern;
+        if(modern){
+            // pk.L candidate 95673785565422 decodes its nY duration to 150 ms.
+            fadeAnimations.put(Easing.LINEAR,new TimedAnimation(150L,0,clock,host.markers()));
+            scaleAnimations.put(Easing.LINEAR,new TimedAnimation(150L,0,clock,host.markers()));
+        }
     }
     public NativeClickGuiScreen(Host host,Config config,Parameters parameters,LongSupplier clock,Guard guard) {
         this.host=host;this.parameters=parameters;this.guard=guard;
@@ -99,14 +122,17 @@ public final class NativeClickGuiScreen implements ClickGuiModule.NativeScreen,M
         map.put(Easing.EASE_IN_BACK,new TimedAnimation(inBack,3,clock,host.markers()));
     }
     /** Original a(): one-time tree construction, called by jK BEFORE display/GuiScreen init.
-     * Repeated calls append; a failed initialize leaves the category in widgets.
+     * Repeated calls rebuild without duplicating categories.
      */
     @Override public void initialize() {
-        float x=10F,y=10F;boolean normal=guard.isNonNull();
+        widgets.clear();scriptsPanel=null;
+        float x=modern?5F:10F,y=x;boolean normal=guard.isNonNull();
         for(CategoryPanel.Category category:host.categories()) {
-            CategoryPanel panel=new CategoryPanel(host.categoryHost(),category,x,y,153F,350F,host.settingFactory(),host.categoryParameters());
+            float initialHeight=modern?Math.max(26F,host.categoryHost().scaledScreen().height()-100F):350F;
+            CategoryPanel panel=new CategoryPanel(host.categoryHost(),category,x,y,modern?140F:153F,initialHeight,host.settingFactory(),host.categoryParameters());
+            panel.setModern(modern);
             panel.setConfig(config);panel.setThemeColor(host.categoryHost().uiColor(config.colorArgb()));widgets.add(panel);
-            panel.initialize();x+=157F;
+            panel.initialize();x+=modern?145F:157F;
             if(!normal) return;
             if(host.isScriptsCategory(category)) scriptsPanel=panel;
         }
@@ -114,8 +140,9 @@ public final class NativeClickGuiScreen implements ClickGuiModule.NativeScreen,M
     /** Original c(): GuiScreen init/reopen/resize lifecycle, distinct from a(). Does not clear modal. */
     public void initializeScreen() {
         host.parentInitialize();boolean normal=guard.isNonNull();closing=false;
+        onColorSettingChanged();
         if(!normal) { reset(fadeAnimations.values(),1F,true);return; }
-        if(config.openingAnimation()) { reset(scaleAnimations.values(),.5F,false);reset(fadeAnimations.values(),0F,false); }
+        if(modern||config.openingAnimation()) { reset(scaleAnimations.values(),modern?0F:.5F,false);reset(fadeAnimations.values(),0F,false); }
         else { reset(scaleAnimations.values(),1F,true);reset(fadeAnimations.values(),1F,true); }
     }
     private void reset(Collection<TimedAnimation> animations,float value,boolean blocked) {
@@ -142,7 +169,7 @@ public final class NativeClickGuiScreen implements ClickGuiModule.NativeScreen,M
         if(!normal) return closing?fadeAnimations.get(config.openingEasing()):scaleAnimations.get(config.openingEasing());
         // Map receiver precedes the setting callback in the original.
         Map<Easing,TimedAnimation> map=fade?fadeAnimations:scaleAnimations;
-        Easing key=closing?config.closingEasing():config.openingEasing();
+        Easing key=modern?Easing.LINEAR:closing?config.closingEasing():config.openingEasing();
         return map.get(key);
     }
     private EffectsModule effects() { if(effects==null) effects=host.effectsModule();return effects; }
@@ -150,21 +177,39 @@ public final class NativeClickGuiScreen implements ClickGuiModule.NativeScreen,M
         boolean normal=guard.isNonNull();
         // null mT carries C straight to the Boolean cast80, before lookup.
         if(!normal) { ((Boolean)(Object)effects).booleanValue();return; }
-        EffectsModule current=effects();
-        if(!current.isShadowEnabled()||!host.effectsModuleEnabled(current)) advanceAnimations(normal);
-        float scale=animation(false).get(),alpha=animation(true).get();applyTransform(scale,alpha);
-        for(ClickGuiWidget widget:widgets) {
-            host.enableBlend();host.blendFunc(parameters.blendSource,parameters.blendDestination);widget.update(mouseX,mouseY);
+        // ClickGUI is excluded from Effects masks: drawing owns animation updates.
+        advanceAnimations(normal);
+        float scale=animation(false).get(),alpha=animation(true).get();
+        int inputX=logicalX(mouseX),inputY=logicalY(mouseY);
+        if(modern){
+            float spacing=145F,total=widgets.size()*140F+(widgets.size()-1)*5F;
+            float start=config.modernCenter()?host.guiWidth()/config.modernScale()/2F-total/2F:5F;
+            for(int i=0;i<widgets.size();i++){
+                CategoryPanel panel=(CategoryPanel)widgets.get(i);panel.setX(start+i*spacing);panel.setY(5F);
+                panel.setInteractionBlocked(modal!=null);
+                panel.setViewportHeight(host.categoryHost().scaledScreen().height()/config.modernScale());panel.prepareLayout();
+            }
         }
-        resetTransform();
+        applyTransform(scale,alpha);
+        if(modern&&config.modernPostProcessing())host.renderModernBlur(()->{
+            for(ClickGuiWidget widget:widgets)((CategoryPanel)widget).drawModernMask();
+        });
+        for(ClickGuiWidget widget:widgets) {
+            host.enableBlend();host.blendFunc(parameters.blendSource,parameters.blendDestination);widget.update(inputX,inputY);
+        }
+        if(modern&&deferredOverlay!=null){
+            DeferredOverlay pending=deferredOverlay;deferredOverlay=null;
+            try{pending.draw();}finally{resetTransform();}
+        }else resetTransform();
         // Original dcmpg treats NaN as below the threshold.
         if(!(animation(false).get()>=.5D)&&closing) closeGameScreen();
         if(modal!=null) modal.update(mouseX,mouseY);
         host.parentDraw(mouseX,mouseY,partialTicks);
     }
-    private static void applyTransform(float scale,float alpha) {
+    private void applyTransform(float scale,float alpha) {
         float translate=(1F-scale)/2F;
-        RenderTransformState.setScale(scale,scale,1F);RenderTransformState.setTranslation(translate,translate,0F);RenderTransformState.setAlpha(alpha);
+        float zoom=modern?config.modernScale():1F;
+        RenderTransformState.setScale(scale*zoom,scale*zoom,1F);RenderTransformState.setTranslation(translate,translate,0F);RenderTransformState.setAlpha(alpha);
     }
     private static void resetTransform() {
         RenderTransformState.resetAlpha();RenderTransformState.resetScale();RenderTransformState.resetTranslation();
@@ -174,7 +219,7 @@ public final class NativeClickGuiScreen implements ClickGuiModule.NativeScreen,M
         boolean normal=guard.isNonNull();
         if(normal&&modal!=null) { modal.mouseClicked(mouseX,mouseY,button);return; }
         for(ClickGuiWidget widget:widgets) {
-            widget.mouseClicked(mouseX,mouseY,button);if(!normal) return;
+            widget.mouseClicked(logicalX(mouseX),logicalY(mouseY),button);if(!normal) return;
         }
         host.parentMouseClicked(mouseX,mouseY,button);
     }
@@ -182,7 +227,7 @@ public final class NativeClickGuiScreen implements ClickGuiModule.NativeScreen,M
         boolean normal=guard.isNonNull();
         if(normal&&modal!=null) { modal.mouseReleased(mouseX,mouseY,button);return; }
         for(ClickGuiWidget widget:widgets) {
-            widget.mouseReleased(mouseX,mouseY,button);if(!normal) return;
+            widget.mouseReleased(logicalX(mouseX),logicalY(mouseY),button);if(!normal) return;
         }
         host.parentMouseReleased(mouseX,mouseY,button);
     }
@@ -191,7 +236,7 @@ public final class NativeClickGuiScreen implements ClickGuiModule.NativeScreen,M
         if(legacyKey==1) {
             if(!normal) { ((Boolean)(Object)modal).booleanValue();return; }
             if(modal!=null) { setModal(null);return; }
-            if(config.closingAnimation()) {
+            if(modern||config.closingAnimation()) {
                 if(!closing) {
                     closing=true;reset(fadeAnimations.values(),1F,false);reset(scaleAnimations.values(),1F,false);host.enableRepeatEvents(false);
                 }
@@ -204,6 +249,10 @@ public final class NativeClickGuiScreen implements ClickGuiModule.NativeScreen,M
         }
         host.parentKeyTyped(character,legacyKey);
     }
+    /** Inverse of the visible shader transform, including animation. Modals remain in screen coordinates. */
+    public int logicalX(int x){return modern?(int)((x-(1F-animation(false).get())*.5F*host.guiWidth())/Math.max(.001F,animation(false).get()*config.modernScale())):x;}
+    public int logicalY(int y){return modern?(int)((y-(1F-animation(false).get())*.5F*host.categoryHost().scaledScreen().height())/Math.max(.001F,animation(false).get()*config.modernScale())):y;}
+    public boolean isModern(){return modern;}
     public boolean doesGuiPauseGame() { return false; }
     @Override public void onOriginalDl() {
         boolean normal=guard.isNonNull();
@@ -212,26 +261,13 @@ public final class NativeClickGuiScreen implements ClickGuiModule.NativeScreen,M
         for(ClickGuiWidget widget:widgets) { widget.tick();if(!normal) return; }
     }
     @Override public void onOriginalDm(Object event) {
-        boolean normal=guard.isNonNull();
-        if(!host.isOriginalDmShadow(event)) return;
-        advanceAnimations(normal);
-        for(ClickGuiWidget widget:widgets) {
-            float scale=animation(false).get(),alpha=animation(true).get();
-            // fcmpl yields -1 for NaN; ifle247 skips the normal draw.
-            if(!normal||alpha>.5F) {
-                // null mT jumps from164 to188 with alpha,.5 on the stack.
-                float translate=(normal?1F-scale:alpha-.5F)/2F;
-                RenderTransformState.setScale(scale,scale,1F);
-                RenderTransformState.setTranslation(translate,translate,0F);RenderTransformState.setAlpha(alpha);
-                widget.onOriginalDm(event,animation(false).get());resetTransform();
-            }
-            if(!normal) return;
-        }
+        // User policy: no ClickGUI shadow, independently of HUD Effects.
     }
     @Override public void onColorSettingChanged() { widgets.forEach(ClickGuiWidget::refreshColor); }
     @Override public ModalOverlay.Scheme modalScheme() { return host.modalScheme(); }
     @Override public void setModal(ModalOverlay overlay) {
         boolean normal=guard.isNonNull();modal=overlay;
+        if(overlay!=null)overlay.setModern(modern);
         if(!normal||overlay!=null) overlay.initialize();
     }
     public ModalOverlay getModal() { return modal; }

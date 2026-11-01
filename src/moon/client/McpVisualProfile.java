@@ -57,7 +57,17 @@ public final class McpVisualProfile {
     public final long notificationRecentChangeWindow=100;
     public Palette palette(int argb){return new Palette(MaterialScheme.dark(argb,materialColorScience));}
     /** Original dark Scheme and consumer roles, explicit offline numeric policy above. */
-    public static final class Palette extends MaterialGuiScheme {
+    public static class Palette extends MaterialGuiScheme {
         Palette(MaterialScheme scheme){super(scheme);}
     }
+    /** Screenshot-derived Modern colors. Missing ns/control classes do not establish exact ARGB values. */
+    public Palette modernPalette(int argb){return new Palette(MaterialScheme.dark(argb,materialColorScience)){
+        @Override public int accent(){return argb;}
+        @Override public int onAccent(){return 0xffffffff;}
+        @Override public int onPrimary(){return 0xffffffff;}
+        @Override public int track(){return 0xff191b1e;}
+        @Override public int text(){return 0xfff4f4f4;}
+        @Override public int panel(){return 0xde202020;}
+        @Override public int background(){return 0xff202124;}
+    };}
 }

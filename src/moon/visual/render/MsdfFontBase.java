@@ -10,6 +10,10 @@ public abstract class MsdfFontBase {
         this.markers=markers;
     }
     public abstract void draw(DrawTask task,String text,float size,float x,float y,int color,boolean flag1,boolean flag2,float offset);
+    /** Nightly jn's final parameter adjusts smoothing independently of glyph weight. */
+    public void draw(DrawTask task,String text,float size,float x,float y,int color,boolean flag1,boolean flag2,float offset,float smoothingAdjustment) {
+        draw(task,text,size,x,y,color,flag1,flag2,offset);
+    }
     public abstract void bind();
     public abstract float width(String text,float size);
     public abstract float secondMetric(String text,float size);

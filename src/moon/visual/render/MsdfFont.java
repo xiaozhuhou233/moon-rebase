@@ -39,6 +39,10 @@ public final class MsdfFont extends MsdfFontBase {
     }
     @Override public void draw(DrawTask task,String text,float size,float x,float y,int color,
                                boolean applyColorCodes,boolean shadow,float offset) {
+        draw(task,text,size,x,y,color,applyColorCodes,shadow,offset,0F);
+    }
+    @Override public void draw(DrawTask task,String text,float size,float x,float y,int color,
+                               boolean applyColorCodes,boolean shadow,float offset,float smoothingAdjustment) {
         char[] chars=text.toCharArray();
         boolean captured=MsdfGlyphShape.inverse();
         MsdfGlyphProvider provider=loader.getProvider();
@@ -64,11 +68,11 @@ public final class MsdfFont extends MsdfFontBase {
             }
             if(shadow&&context.isApplyColorCodes()) {
                 context.setApplyColorCodes(false);
-                task.add(glyph.quad(x+pen+kern*size+.5F,y+.5F,smooth,boldWeight,offset,weight,true,context,
+                task.add(glyph.quad(x+pen+kern*size+.5F,y+.5F,smooth+smoothingAdjustment,boldWeight,offset,weight,true,context,
                     parameters.noPlaneShadow,parameters.planeShadow,markers));
                 context.setApplyColorCodes(true);
             }
-            task.add(glyph.quad(x+pen+kern*size,y,smooth,boldWeight,offset,weight,false,context,
+            task.add(glyph.quad(x+pen+kern*size,y,smooth+smoothingAdjustment,boldWeight,offset,weight,false,context,
                 parameters.noPlaneShadow,parameters.planeShadow,markers));
             float advance=i==chars.length-1?glyph.advance()*size:(glyph.advance()+kern)*size;
             if(glyph.getGlyph().getPlaneBounds()!=null) {

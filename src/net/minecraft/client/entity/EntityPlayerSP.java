@@ -66,6 +66,11 @@ public class EntityPlayerSP extends AbstractClientPlayer {
 	private boolean hasValidHealth;
 	private String clientBrand;
 	public MovementInput movementInput;
+    @Override public void setAngles(float yaw,float pitch){
+        var services=moon.client.McpModuleServices.current();
+        if(services!=null&&services.myau.active()&&moon.port.myau.Myau.rotationManager.isRotated())return;
+        super.setAngles(yaw,pitch);
+    }
 	protected Minecraft mc;
 	/**
 	 * Used to tell if the player pressed forward twice. If this is at 0 and it's pressed (And they are
@@ -126,9 +131,11 @@ public class EntityPlayerSP extends AbstractClientPlayer {
 			moon.client.McpVisualServices.playerMotionPhase(this);
 			super.onUpdate();
 			if (this.isRiding()) {
-				this.sendQueue.addToSendQueue(new C03PacketPlayer.C05PacketPlayerLook(this.rotationYaw, this.rotationPitch, this.onGround));
+                var moonRiding=moon.client.McpModuleServices.ridingMotion(this);
+				this.sendQueue.addToSendQueue(new C03PacketPlayer.C05PacketPlayerLook(moonRiding.yaw(), moonRiding.pitch(), this.onGround));
 				this.sendQueue.addToSendQueue(new C0CPacketInput(this.moveStrafing, this.moveForward, this.movementInput.jump, this.movementInput.sneak));
 			} else this.onUpdateWalkingPlayer();
+            moon.client.McpModuleServices.playerAfterUpdate(this);
 		}
 	}
 
@@ -561,6 +568,7 @@ public class EntityPlayerSP extends AbstractClientPlayer {
 				else this.horseJumpPower = 0.8F + 2.0F / (this.horseJumpPowerCounter - 9) * 0.1F;
 			}
 		} else this.horseJumpPower = 0.0F;
+        moon.client.McpModuleServices.playerBeforeLiving(this);
 		super.onLivingUpdate();
 		if (this.onGround && this.capabilities.isFlying && !this.mc.playerController.isSpectatorMode()) {
 			this.capabilities.isFlying = false;
@@ -570,6 +578,10 @@ public class EntityPlayerSP extends AbstractClientPlayer {
 
     /** Clutch displacement is applied before vanilla collision handling. */
     public boolean luaIsInWeb(){return isInWeb;}
+    @Override public void setVelocity(double x,double y,double z){
+        double[] motion=moon.client.McpModuleServices.knockback(this,x,y,z);
+        super.setVelocity(motion[0],motion[1],motion[2]);
+    }
     @Override public void moveEntity(double x,double y,double z) {
         Vec3 tower=moon.client.McpModuleServices.scaffoldMove(this,y);
         if(tower!=null){x=tower.xCoord;y=tower.yCoord;z=tower.zCoord;}

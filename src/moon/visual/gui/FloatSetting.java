@@ -21,6 +21,7 @@ public final class FloatSetting extends SettingValue<Float> {
         value=NumericSettingMath.clamp(value,minimum,maximum);
         double quantized=NumericSettingMath.round(NumericSettingMath.clamp(step*Math.ceil(value/step),(double)minimum,(double)maximum),3);
         setRawValue(value.floatValue());super.set((float)quantized);
+        if(Float.compare(get(),(float)quantized)!=0)setRawValue(get());
     }
     @Override public JsonObject toJson() {
         JsonObject json=new JsonObject();json.addProperty("name",getKey());json.addProperty("value",get());return json;

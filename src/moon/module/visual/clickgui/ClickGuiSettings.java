@@ -14,7 +14,8 @@ import moon.module.visual.ClickGuiModule.*;
  */
 public final class ClickGuiSettings implements NativeClickGuiScreen.Config,CategoryPanel.StyleConfig {
     public final EnumSetting<Mode> mode;
-    public final BooleanSetting openingAnimation,closingAnimation;
+    public final BooleanSetting openingAnimation,closingAnimation,center,postProcessing;
+    public final FloatSetting scale;
     public final EnumSetting<OpeningType> openingType;
     public final EnumSetting<ClosingType> closingType;
     public final EnumSetting<ModuleDesign> moduleDesign;
@@ -28,15 +29,18 @@ public final class ClickGuiSettings implements NativeClickGuiScreen.Config,Categ
         // Original u=com.v.b(-1) precedes v..B; B's RED default has no callback.
         module=new ClickGuiModule(backend,this::selectedMode,originalGuardIsNull);
         shadowColor=new moon.visual.render.ShadowStyle("shadow-color","Shadow Color",markers);
-        mode=record("v",EnumSetting.builder("mode",Mode.class,markers).configure("Mode",Mode.DEFAULT)
+        mode=record("v",EnumSetting.builder("mode",Mode.class,markers).configure("Mode",Mode.MODERN)
             .labels(Objects.requireNonNull(modeLabels,"unresolved a1 labels")).build());
-        openingAnimation=record("w",BooleanSetting.builder("open-animation",markers).configure("Opening Animation",true).build());
+        openingAnimation=record("w",BooleanSetting.builder("open-animation",markers).configure("Opening Animation",true).visibility(()->mode.get()==Mode.DEFAULT).build());
         openingType=record("x",EnumSetting.builder("open-animation-type",OpeningType.class,markers).configure("Opening Type",OpeningType.LINEAR)
-            .visibility(openingAnimation::get).build());
-        closingAnimation=record("y",BooleanSetting.builder("close-animation",markers).configure("Closing Animation",true).build());
+            .visibility(()->mode.get()==Mode.DEFAULT&&openingAnimation.get()).build());
+        closingAnimation=record("y",BooleanSetting.builder("close-animation",markers).configure("Closing Animation",true).visibility(()->mode.get()==Mode.DEFAULT).build());
         closingType=record("z",EnumSetting.builder("close-animation-type",ClosingType.class,markers).configure("Closing Type",ClosingType.IN_BACK)
-            .visibility(closingAnimation::get).build());
-        moduleDesign=record("A",EnumSetting.builder("module-design-type",ModuleDesign.class,markers).configure("Module Design",ModuleDesign.ROUNDED).build());
+            .visibility(()->mode.get()==Mode.DEFAULT&&closingAnimation.get()).build());
+        moduleDesign=record("A",EnumSetting.builder("module-design-type",ModuleDesign.class,markers).configure("Module Design",ModuleDesign.STACKED).visibility(()->mode.get()==Mode.DEFAULT).build());
+        center=record("nightly.B",BooleanSetting.builder("center",markers).configure("Center",false).visibility(()->mode.get()==Mode.MODERN).build());
+        postProcessing=record("nightly.C",BooleanSetting.builder("post-processing",markers).configure("Post Processing",true).visibility(()->mode.get()==Mode.MODERN).build());
+        scale=record("nightly.D",FloatSetting.builder("scale",markers).configure("Scale",1F,.5F,2F,.1F).visibility(()->mode.get()==Mode.MODERN).build());
         color=record("B",ColorSetting.builder("color",markers).configure("Color",ClickGuiModule.DEFAULT_COLOR_SETTING)
             .callback(module::onColorChanged).build());
     }
@@ -45,6 +49,9 @@ public final class ClickGuiSettings implements NativeClickGuiScreen.Config,Categ
     public ClickGuiModule module(){return module;}
     public Map<String,SettingValue<?>> originalFields(){return Collections.unmodifiableMap(fields);}
     public List<SettingValue<?>> roots(){List<SettingValue<?>> roots=new ArrayList<>(fields.values());roots.add(shadowColor.group);return Collections.unmodifiableList(roots);}
+    @Override public boolean modernCenter(){return center.get();}
+    @Override public boolean modernPostProcessing(){return postProcessing.get();}
+    @Override public float modernScale(){return scale.get();}
     @Override public int colorArgb(){return color.get();}
     @Override public boolean openingAnimation(){return openingAnimation.get();}
     @Override public boolean closingAnimation(){return closingAnimation.get();}

@@ -12,8 +12,8 @@ import moon.visual.gui.DisplayNamed;
  */
 public final class ClickGuiModule {
     public enum Mode implements DisplayNamed {
-        DEFAULT, IM_GUI;
-        public String displayName() { throw new UnsupportedOperationException("a1 original display labels unresolved; supply ClickGuiSettings modeLabels"); }
+        DEFAULT, IM_GUI, MODERN;
+        public String displayName() { return this==IM_GUI?"ImGui":this==MODERN?"Modern":"Default"; }
     }
     /** a3/a0/a2 labels decoded from their original tables using an offline seed model;
      * these are not runtime string captures. Enum order is confirmed by classfiles. */
@@ -29,7 +29,7 @@ public final class ClickGuiModule {
         ROUNDED("Rounded"), STACKED("Stacked");
         private final String label;ModuleDesign(String label){this.label=label;}public String displayName(){return label;}
     }
-    public static final Mode DEFAULT_MODE = Mode.DEFAULT;
+    public static final Mode DEFAULT_MODE = Mode.MODERN;
     public static final boolean DEFAULT_OPEN_ANIMATION = true;
     public static final boolean DEFAULT_CLOSE_ANIMATION = true;
     public static final OpeningType DEFAULT_OPENING_TYPE = OpeningType.LINEAR;
@@ -49,6 +49,7 @@ public final class ClickGuiModule {
     }
     public interface Backend {
         NativeScreen createNativeScreen(ClickGuiModule module);
+        default NativeScreen createModernScreen(ClickGuiModule module){throw new UnsupportedOperationException("Modern backend not installed");}
         Screen createImGuiScreen();
         Object currentScreen();
         void displayScreen(Screen screen);
@@ -61,7 +62,7 @@ public final class ClickGuiModule {
     private final Backend backend;
     private final Supplier<Mode> mode;
     private final BooleanSupplier originalGuardIsNull;
-    private NativeScreen nativeScreen;
+    private NativeScreen nativeScreen,modernScreen;
     private Screen imGuiScreen;
     private Object uiColor;
 
@@ -84,7 +85,11 @@ public final class ClickGuiModule {
                 }
                 backend.displayScreen(imGuiScreen);
                 break;
-            case DEFAULT:
+            case MODERN: // gS switch arm 1 -> lS constructs pk, verified against classfiles.
+                if(modernScreen==null){modernScreen=backend.createModernScreen(this);modernScreen.initialize();}
+                backend.displayScreen(modernScreen);
+                break;
+            case DEFAULT: // gS switch arm 2 -> pj, original material tree.
                 if(nativeScreen==null) {
                     nativeScreen=backend.createNativeScreen(this);
                     nativeScreen.initialize();
@@ -105,7 +110,8 @@ public final class ClickGuiModule {
         }
         // Nonnull skips instanceof and the second read; null==null deliberately
         // reaches the original null receiver invocation and its exception.
-        if(current==nativeScreen) nativeScreen.onOriginalDl();
+        if(current==nativeScreen&&nativeScreen!=null) nativeScreen.onOriginalDl();
+        else if(current==modernScreen&&modernScreen!=null)modernScreen.onOriginalDl();
     }
 
     public void onOriginalDm(Object event) {
@@ -117,17 +123,20 @@ public final class ClickGuiModule {
         }
         // Nonnull skips instanceof and the second read; null==null deliberately
         // reaches the original null receiver invocation and its exception.
-        if(current==nativeScreen) nativeScreen.onOriginalDm(event);
+        if(current==nativeScreen&&nativeScreen!=null) nativeScreen.onOriginalDm(event);
+        else if(current==modernScreen&&modernScreen!=null)modernScreen.onOriginalDm(event);
     }
 
     public void onColorChanged(Integer previousValue,Integer newValue) {
         boolean normal=originalGuardIsNull.getAsBoolean();
         if(normal && nativeScreen!=null) nativeScreen.onColorSettingChanged();
+        if(normal && modernScreen!=null) modernScreen.onColorSettingChanged();
         uiColor=backend.createUiColor(newValue.intValue());
         backend.applyGlobalColor(newValue.intValue());
     }
 
     public NativeScreen getNativeScreen(){return nativeScreen;}
+    public NativeScreen getModernScreen(){return modernScreen;}
     public Screen getImGuiScreen(){return imGuiScreen;}
     public Object getUiColor(){return uiColor;}
 

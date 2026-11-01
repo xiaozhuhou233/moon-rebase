@@ -717,7 +717,7 @@ public class GuiIngame extends Gui {
         }
         ++this.updateCounter;
         if (this.mc.thePlayer != null) {
-            final ItemStack itemstack = this.mc.thePlayer.inventory.getCurrentItem();
+            final ItemStack itemstack = this.mc.thePlayer.inventory.getStackInSlot(moon.client.McpModuleServices.displayedSlot(this.mc.thePlayer.inventory.currentItem));
             if (itemstack == null) this.remainingHighlightTicks = 0;
             else if (this.highlightingItemStack != null && itemstack.getItem() == this.highlightingItemStack.getItem() && ItemStack.areItemStackTagsEqual(itemstack, this.highlightingItemStack)
                      && (itemstack.isItemStackDamageable() || itemstack.getMetadata() == this.highlightingItemStack.getMetadata())) {

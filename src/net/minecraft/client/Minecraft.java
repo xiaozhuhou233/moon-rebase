@@ -1078,6 +1078,7 @@ public class Minecraft implements IThreadListener, IPlayerUsage {
     }
 
     private void sendClickBlockToController(final boolean leftClick) {
+        if (moon.client.McpModuleServices.cancelBlockHit()) {this.playerController.resetBlockRemoving();return;}
         if (!leftClick) this.leftClickCounter = 0;
         if (this.leftClickCounter <= 0 && !this.thePlayer.isUsingItem())
             if (leftClick && this.objectMouseOver != null && this.objectMouseOver.typeOfHit == MovingObjectPosition.MovingObjectType.BLOCK) {
@@ -1090,6 +1091,7 @@ public class Minecraft implements IThreadListener, IPlayerUsage {
     }
 
     private void clickMouse() {
+        if (moon.client.McpModuleServices.cancelModuleClick(0)) return;
         this.moonDispatchLeftClick(moon.client.McpModuleServices.leftClickHit(this.objectMouseOver));
     }
 
@@ -1148,6 +1150,7 @@ public class Minecraft implements IThreadListener, IPlayerUsage {
     }
 
     private void rightClickMouse() {
+        if (moon.client.McpModuleServices.cancelModuleClick(1)) return;
         if (!this.playerController.getIsHittingBlock()) {
             this.rightClickDelayTimer = 4;
             boolean flag = true;
@@ -1246,6 +1249,7 @@ public class Minecraft implements IThreadListener, IPlayerUsage {
      * Runs the current tick.
      */
     public void runTick() throws IOException {
+        moon.client.McpModuleServices.myauTick(true);
         dev.pier.lua.LuaManager.get().onTick();
         moon.client.McpVisualEvents.tick();
         if (moon.client.McpModuleServices.fastPlaceClearsDelay()) this.rightClickDelayTimer=0;
@@ -1306,7 +1310,7 @@ public class Minecraft implements IThreadListener, IPlayerUsage {
                             final float f = MathHelper.clamp_float(this.thePlayer.capabilities.getFlySpeed() + j * 0.005F, 0.0F, 0.2F);
                             this.thePlayer.capabilities.setFlySpeed(f);
                         }
-                    } else if (!Config.zoomMode) this.thePlayer.inventory.changeCurrentItem(j);
+                    } else if (!Config.zoomMode && !moon.client.McpModuleServices.cancelHotbarSwap(-1,j)) this.thePlayer.inventory.changeCurrentItem(j);
                     if (this.currentScreen == null) {
                         if (!this.inGameHasFocus && Mouse.getEventButtonState()) this.setIngameFocus();
                     } else this.currentScreen.handleMouseInput();
@@ -1375,7 +1379,7 @@ public class Minecraft implements IThreadListener, IPlayerUsage {
             for (int l = 0; l < 9; ++l)
                 if (this.gameSettings.keyBindsHotbar[l].isPressed())
                     if (this.thePlayer.isSpectator()) this.ingameGUI.getSpectatorGui().func_175260_a(l);
-                    else this.thePlayer.inventory.currentItem = l;
+                    else if (!moon.client.McpModuleServices.cancelHotbarSwap(l,0)) this.thePlayer.inventory.currentItem = l;
             final boolean flag = this.gameSettings.chatVisibility != EntityPlayer.EnumChatVisibility.HIDDEN;
             while (this.gameSettings.keyBindInventory.isPressed())
                 if (this.playerController.isRidingHorse()) this.thePlayer.sendHorseInventory();
@@ -1389,7 +1393,7 @@ public class Minecraft implements IThreadListener, IPlayerUsage {
             if (this.currentScreen == null && this.gameSettings.keyBindCommand.isPressed() && flag)
                 this.displayGuiScreen(new GuiChat("/"));
             if (this.thePlayer.isUsingItem()) {
-                if (!this.gameSettings.keyBindUseItem.isKeyDown())
+                if (!this.gameSettings.keyBindUseItem.isKeyDown() && !moon.client.McpModuleServices.cancelItemUseRelease())
                     this.playerController.onStoppedUsingItem(this.thePlayer);
                 while (this.gameSettings.keyBindAttack.isPressed())
                     if (moon.client.McpModuleServices.attackWhileUsingItem()) this.clickMouse();
@@ -1453,6 +1457,7 @@ public class Minecraft implements IThreadListener, IPlayerUsage {
         this.mcProfiler.endSection();
         this.systemTime = getSystemTime();
         moon.client.McpVisualEvents.tickPost();
+        moon.client.McpModuleServices.myauTick(false);
     }
 
     /**

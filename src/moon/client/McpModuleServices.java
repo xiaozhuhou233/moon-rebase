@@ -45,6 +45,11 @@ public final class McpModuleServices implements AutoCloseable {
     public final moon.module.player.Sprint sprint;
     public final moon.module.player.sprint.SprintController sprintController;
     public final McpMyauModules myau;
+    public final moon.module.movement.SpeedModule speed;
+    public final moon.module.movement.TargetStrafeModule targetStrafe;
+    private Movement displacementInput;
+    private int displacementTick=-1;
+    private EntityPlayerSP displacementPlayer;
     public final moon.module.player.SessionInformationModule session;
     public final moon.module.player.InventoryManagerModule inventory;
     public final moon.module.player.ChestStealerModule chest;
@@ -93,6 +98,8 @@ public final class McpModuleServices implements AutoCloseable {
         scaffold=new moon.module.player.ScaffoldWalkModule(new McpScaffoldHost(mc),hooks,sprintController);
         sprint=new moon.module.player.Sprint(mc,hooks,sprintController);
         myau=new McpMyauModules(mc,hooks);
+        speed=new moon.module.movement.SpeedModule(mc,hooks);
+        targetStrafe=new moon.module.movement.TargetStrafeModule(mc,drawing,hooks,myau::target);
         
         inventory=new moon.module.player.InventoryManagerModule(mc,()->myau.target()!=null||killAura.target()!=null,hooks);
         chest=new moon.module.player.ChestStealerModule(mc,inventory,hooks);
@@ -105,7 +112,7 @@ public final class McpModuleServices implements AutoCloseable {
         combatCancellations.add(scaffold::blocksCombat);
         combatCancellations.add(inventory::usingPotion);
         // The previous implementations remain available as source backups only.
-        modules=List.of(myau.killAura,myau.velocity,backtrack,fastPlace,sprint,myau.scaffold,session,chest,inventory);
+        modules=List.of(myau.killAura,myau.velocity,backtrack,fastPlace,sprint,speed,targetStrafe,myau.scaffold,session,chest,inventory);
         config=new McpVisualConfigStore(mc.mcDataDir.toPath().resolve("moon/module-config.json"));
         for(NativeModule module:modules)config.bind(module.key(),module.settings(),module::enabled,module::setEnabled);
         instance=this;
@@ -193,6 +200,8 @@ public final class McpModuleServices implements AutoCloseable {
         if(inventoryAngles!=null){angles=inventoryAngles;source=services.inventory;}
         if(scaffoldAngles!=null){angles=scaffoldAngles;source=services.scaffold;}
         services.myau.beforeWalking();
+        services.targetStrafe.motionPre();
+        services.speed.motionPre();
         Angles myauAngles=services.myau.angles();
         if(myauAngles!=null){angles=myauAngles;source=services.myau.rotationSource();}
         services.publishVisualMotion(player,angles,source);
@@ -200,7 +209,7 @@ public final class McpModuleServices implements AutoCloseable {
         moon.module.player.scaffold.OpenB4Support.RotationManager.lastYaw=result.yaw();
         moon.module.player.scaffold.OpenB4Support.RotationManager.lastPitch=result.pitch();
         moon.module.player.scaffold.OpenB4Support.RotationManager.playerYawAtSend=player.rotationYaw;
-        return result;
+        return new Motion(result.yaw(),result.pitch(),result.y(),services.speed.packetGround(result.onGround()));
     }
     /** Sprint module, or an actively placing Scaffold, owns the vanilla sprint block. */
     public static boolean moonOwnsSprint(EntityPlayerSP player){
@@ -213,7 +222,7 @@ public final class McpModuleServices implements AutoCloseable {
         McpModuleServices services=instance;
         if(services!=null&&!services.closed&&player==services.mc.thePlayer){services.inventory.motionPost();services.killAura.motionPost();}
     }
-    public static void myauTick(boolean pre){McpModuleServices s=instance;if(s!=null&&!s.closed)s.myau.tick(pre);}
+    public static void myauTick(boolean pre){McpModuleServices s=instance;if(s!=null&&!s.closed){s.myau.tick(pre);if(pre)s.speed.tickPre();}}
     public static void playerAfterUpdate(EntityPlayerSP player){McpModuleServices s=instance;if(s!=null&&!s.closed&&player==s.mc.thePlayer)s.myau.postUpdate();}
     public static Motion ridingMotion(EntityPlayerSP player){McpModuleServices s=instance;Angles a=s==null||s.closed||player!=s.mc.thePlayer?null:s.myau.angles();return a==null?new Motion(player.rotationYaw,player.rotationPitch):new Motion(a.yaw(),a.pitch());}
     /** Scaffold places from the pre-move delta, before the walk pose publishes the look. */
@@ -223,6 +232,12 @@ public final class McpModuleServices implements AutoCloseable {
     }
     public record Movement(float yaw,float strafe,float forward) { }
     public static Movement movement(EntityPlayerSP player,float strafe,float forward) {
+        Movement result=physicsMovement(player,strafe,forward);
+        McpModuleServices s=instance;
+        if(s!=null&&!s.closed&&player==s.mc.thePlayer){s.displacementInput=result;s.displacementTick=player.ticksExisted;s.displacementPlayer=player;}
+        return result;
+    }
+    private static Movement physicsMovement(EntityPlayerSP player,float strafe,float forward) {
         McpModuleServices s=instance;
         if(s!=null&&!s.closed&&player==s.mc.thePlayer&&s.myau.active()){
             float[] input=s.myau.strafe(strafe,forward,0);
@@ -301,7 +316,7 @@ public final class McpModuleServices implements AutoCloseable {
         }
     }
     public static void playerBeforeLiving(EntityPlayerSP player){McpModuleServices s=instance;if(s!=null&&!s.closed&&player==s.mc.thePlayer)s.myau.beforeLiving();}
-    public static void renderScaffold(float ticks){McpModuleServices s=instance;if(s!=null&&!s.closed)s.myau.render3D(ticks);}
+    public static void renderScaffold(float ticks){McpModuleServices s=instance;if(s!=null&&!s.closed){s.myau.render3D(ticks);s.targetStrafe.render(ticks);}}
     public static void renderScaffoldCount(){McpModuleServices s=instance;if(s!=null&&!s.closed)s.myau.render2D(1);}
     public static McpMyauModules.RenderSlot spoofedRenderSlot(){McpModuleServices s=instance;return new McpMyauModules.RenderSlot(s==null?null:s.mc.thePlayer,s==null||s.closed?-1:s.myau.displayedSlot());}
     public static int displayedSlot(int fallback){McpModuleServices s=instance;int slot=s==null||s.closed?-1:s.myau.displayedSlot();return slot>=0?slot:fallback;}
@@ -325,10 +340,28 @@ public final class McpModuleServices implements AutoCloseable {
         // The recovered Velocity module edits the vanilla setVelocity path through
         // KnockbackEvent. Keep this hook for the existing damage bookkeeping and
         // let EntityPlayerSP.setVelocity dispatch the copied event exactly once.
-        if(entity==s.mc.thePlayer)s.killAura.openB4.damage();
+        if(entity==s.mc.thePlayer){s.killAura.openB4.damage();s.speed.velocity(x,z,explosion);}
         return false;
     }
-    public static double[] knockback(EntityPlayerSP player,double x,double y,double z){McpModuleServices s=instance;return s==null||s.closed||player!=s.mc.thePlayer?new double[]{x,y,z}:s.myau.knockback(x,y,z);}
+    public static double[] knockback(EntityPlayerSP player,double x,double y,double z){
+        McpModuleServices s=instance;if(s==null||s.closed||player!=s.mc.thePlayer)return new double[]{x,y,z};
+        return s.myau.knockback(x,y,z);
+    }
+    public static double[] movementDelta(EntityPlayerSP player,double x,double y,double z) {
+        McpModuleServices s=instance;
+        if(s==null||s.closed||player!=s.mc.thePlayer)return new double[]{x,y,z};
+        Movement input=s.displacementPlayer==player&&s.displacementTick==player.ticksExisted?s.displacementInput:null;
+        var move=new moon.module.movement.SpeedModule.Move(x,y,z,input==null?player.moveForward:input.forward(),input==null?player.moveStrafing:input.strafe(),input==null?player.rotationYaw:input.yaw());
+        s.targetStrafe.move(move);s.speed.move(move);
+        return new double[]{move.x,move.y,move.z};
+    }
+    public static boolean suppressSpeedJump(EntityLivingBase entity) {
+        McpModuleServices s=instance;return s!=null&&!s.closed&&entity==s.mc.thePlayer&&s.speed.suppressVanillaJump();
+    }
+    public static moon.module.movement.SpeedModule.CameraPosition speedCameraPosition() {
+        McpModuleServices s=instance;
+        return s==null||s.closed?new moon.module.movement.SpeedModule.CameraPosition(null,0):s.speed.cameraPosition();
+    }
     /** Serialize packet state with movement on the client thread. Direct drain uses
      * NetworkManager, bypassing NetHandler's normal observer exactly once. */
     public static boolean scaffoldSend(net.minecraft.client.network.NetHandlerPlayClient handler,net.minecraft.network.Packet<?> packet){

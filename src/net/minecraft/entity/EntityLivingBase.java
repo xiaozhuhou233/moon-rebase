@@ -1475,7 +1475,7 @@ public abstract class EntityLivingBase extends Entity {
 		 else if (this.isInLava()) {
 			this.handleJumpLava();
 		 }
-		 else if (this.onGround && this.jumpTicks == 0) {
+		 else if (this.onGround && this.jumpTicks == 0 && !moon.client.McpModuleServices.suppressSpeedJump(this)) {
 			this.jump();
 			this.jumpTicks = 10;
 		 }

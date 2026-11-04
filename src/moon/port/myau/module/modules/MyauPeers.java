@@ -10,7 +10,7 @@ public final class MyauPeers {
  public static class AutoHeal extends Absent {public boolean isSwitching(){return false;}}
  public static class BedNuker extends Absent {public boolean isReady(){return false;}}
  public static class LongJump extends Absent {public boolean isAutoMode(){return false;}public boolean isJumping(){return false;}public boolean canStartJump(){return false;}}
- public static class Speed extends Absent {}
+ public static class Speed extends Absent {public boolean isEnabled(){var services=moon.client.McpModuleServices.current();return services!=null&&services.speed.enabled();}}
  public static class Fly extends Absent {}
  public static class BlockIn extends Absent {public boolean isPlacing(){return false;}}
  public static class NoSlow extends Absent {public boolean isSwordActive(){return false;}public boolean isWatchdogReleaseTick(){return false;}}

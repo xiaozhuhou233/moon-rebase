@@ -139,7 +139,7 @@ public final class McpVisualServices implements AutoCloseable,SettingWidgetFacto
     }
     public static CameraModule camera(){return instance==null||instance.closed?null:instance.camera;}
     public static void captureCameraOcclusion(double x,double y,double z){CameraModule c=camera();if(c!=null)c.updateOcclusion(x,y,z);}
-    public static void captureEspBoxCamera(double x,double y,double z){McpVisualServices v=instance;if(v!=null&&!v.closed)v.esp.captureCamera(x,y,z);v.nativeModules.backtrack.captureCamera(x,y,z);}
+    public static void captureEspBoxCamera(double x,double y,double z){McpVisualServices v=instance;if(v!=null&&!v.closed){v.esp.captureCamera(x,y,z);v.nativeModules.backtrack.captureCamera(x,y,z);v.nativeModules.targetStrafe.captureCamera(x,y,z);}}
     public static boolean cameraFlag(String key){
         CameraModule c=camera();if(c==null)return false;
         return switch(key){

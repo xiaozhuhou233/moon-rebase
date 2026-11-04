@@ -583,6 +583,8 @@ public class EntityPlayerSP extends AbstractClientPlayer {
         super.setVelocity(motion[0],motion[1],motion[2]);
     }
     @Override public void moveEntity(double x,double y,double z) {
+        double[] nativeMove=moon.client.McpModuleServices.movementDelta(this,x,y,z);
+        x=nativeMove[0];y=nativeMove[1];z=nativeMove[2];
         Vec3 tower=moon.client.McpModuleServices.scaffoldMove(this,y);
         if(tower!=null){x=tower.xCoord;y=tower.yCoord;z=tower.zCoord;}
         double[] lua=dev.pier.lua.LuaManager.get().onMove(x,y,z);

@@ -966,6 +966,7 @@ public class EntityRenderer implements IResourceManagerReloadListener {
 	public void renderWorld(final float partialTicks, final long finishTimeNano) {
 		this.updateLightmap(partialTicks);
 		if (this.mc.getRenderViewEntity() == null) this.mc.setRenderViewEntity(this.mc.thePlayer);
+        try (var speedCamera=moon.client.McpModuleServices.speedCameraPosition()) {
 		this.getMouseOver(partialTicks);
 		if (Config.isShaders()) Shaders.beginRender(this.mc, partialTicks, finishTimeNano);
 		GlStateManager.enableDepth();
@@ -982,6 +983,7 @@ public class EntityRenderer implements IResourceManagerReloadListener {
 			GlStateManager.colorMask(true, true, true, false);
 		} else this.renderWorldPass(2, partialTicks, finishTimeNano);
 		this.mc.mcProfiler.endSection();
+        }
 	}
 
 	private void renderWorldPass(final int pass, final float partialTicks, final long finishTimeNano) {

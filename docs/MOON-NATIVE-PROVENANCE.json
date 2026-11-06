@@ -1,0 +1,76 @@
+{
+  "donor": "Nightly 256ae01",
+  "archive_scaffold_class_internal_name": "com/moon/lk (wrong class, not used)",
+  "archive_wrong_scaffold_sha256": "bfb324a952ffbc9bd28c39277b32ac12752dda3912e55abd0ecbccf15a18452f",
+  "actual_scaffold_source": "D:/bypassmoon/dump-nightly/com.moon.l~k.class",
+  "class_data_sha256": {
+    "ba.class": "5feafba4f48d12a717dcbf538e509746ce53bb4a46445eb2a0d477b85ec3531a",
+    "bb.class": "7cfe1d4c4fd63085498e16384b3c272990f297bb1399943f1f99ead756e22139",
+    "b~f.class": "b64e0dbdd0a16833237f90128bae5a3faa66940edbf0db4bf83b0477994408c5",
+    "d2.class": "4742db2d17f166e31ad82332bde054a97df07486301a49e12dc319afc4f94ba4",
+    "d~l.class": "d91ffae55e6822193ef8eea32ef1bf03a03c5f3d6901125b5d3f89044dcf72a3",
+    "d~r.class": "1d7bf9b657dc06bf6ecebd2e01ca06867cd4b91ec472be2cd7fc2652652f23f5",
+    "d~v.class": "345da5deba92b62ea9c689a8cd69b3df7346ba8f1ca99dafdba0a735a52e0799",
+    "d~z.class": "4b5d488813077ce51d52070ccdd19e3a2402f63beb05f8d04636b4dc0d3f4171",
+    "et.class": "186f75100ccee30163c51de1a260e56f941a852b1635c611ca7777f689048bee",
+    "eu.class": "0b43326eab63fed7654a119571d17f9c837699d610f70a9452443ddc796c090c",
+    "ex.class": "26285baf0628325ccba9e842a6b43a5d3b2f58eab145e4fea2e938ff42e66ca2",
+    "e~a.class": "1666d9a687f1c429149ced18281ef88f59f80285570d921dfab90709e1993bcb",
+    "e~d.class": "aed0361b9db6abf8fd044f9c5f2c51b9376a8f711b7b72bd59be0ebbd65511c8",
+    "e~e.class": "ab77a2009fe73e1975a6ba3e6493cbfd6b1bb18ecdabd59e1616637e36c7c7d8",
+    "e~f.class": "ae73a2e50f6f56200eacccbed063e50679700e59783a495a1223ca5d8bfaa455",
+    "e~g.class": "a1b086b6abe645d119aa3ce39e2f9eacda3b95692d2a6faef314100a66391293",
+    "e~l.class": "5feadc7ae4fa5805d42020d248c99119a1953a6949ffc3f126ac71a5262f59e7",
+    "e~n.class": "2496a7c9d334dc21324b16a9e06b7a26dd4fd6cc8aed2abceb0e107cf4a9fd65",
+    "ga.class": "ce632cca1d1334656315f4659ae85baa7abd40dd865b1a085eca8669dc4da282",
+    "gc.class": "257f12c5c33dbd5f491bc02e7280a933895a839355201d36e3772668a5681b37",
+    "gd.class": "15e640384736c93b0184276a8ca51e882e2479cc1b361e41756004fd614fa9cd",
+    "gy.class": "fa6520da83acd1210c34bc530d21d04bc88f15ee1c8cfb140898e39cf6a844dc",
+    "g~a.class": "3061c9444b359c4b16b3373aef843e91d20335e62ce8282a5ea7b0b78daa7f0e",
+    "g~c.class": "e0b0c06c12fff9f23bb11382d217fc631138124ee9d550a4244489a2bb8ce2d5",
+    "g~d.class": "0c77c005122acaafec12d8197c5a7f34d822c6b769ff60f0361a7bf30445eb2a",
+    "g~e.class": "3fa1c5448d9e43267cbd20999d7cf7fce2efca4c470595f65d3902f03e076fe6",
+    "lb.class": "05d83520afe4a4bc2819d46f84d86c502149a29f39817eeaff968a57c1003633",
+    "l~k.class": "752fc1e25636c1fdba9c806e69e9fb43c0f8e4e52b3a36d903ed685fa974429d",
+    "n4.class": "d202b28d83d1ce8a0b423247f0b0bd02c8d9491d6b8ee1d528520d91be353fd2"
+  },
+  "numeric_constants": {
+    "gC": [
+      {
+        "seed": 88026807139410,
+        "values": {
+          "7449": -5,
+          "10338": -3,
+          "25785": -5
+        }
+      }
+    ],
+    "gk": [
+      {
+        "seed": 36481326974125,
+        "values": {
+          "6368": 16,
+          "2320": 16
+        }
+      }
+    ],
+    "gc": [],
+    "ga": [
+      {
+        "seed": 62941883918314,
+        "values": {
+          "16467": 5000,
+          "24784": 25000,
+          "10847": 17,
+          "9242": 14,
+          "20819": 47,
+          "28738": 47,
+          "27015": 50,
+          "25653": 100,
+          "12256": 5000,
+          "8051": 25000
+        }
+      }
+    ]
+  }
+}

@@ -35,6 +35,7 @@ public final class KillAuraRotations {
         if(s.onlyRotateWhenNeeded.get()&&rayHitsTarget) { previous=current;return; }
         double eyeY=p.y()+p.eyeHeight();
         if(s.dontRotateInHitbox.get()&&inside(p.x(),eyeY,p.z(),target)) { previous=current;return; }
+        previous=current;
         double x=clamp(p.x(),target.x()-.4000000059604645,target.x()+.4000000059604645);
         double y=clamp(eyeY,target.y(),target.y()+target.height());
         double z=clamp(p.z(),target.z()-.4000000059604645,target.z()+.4000000059604645);

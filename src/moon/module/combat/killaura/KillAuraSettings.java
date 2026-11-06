@@ -13,6 +13,10 @@ public final class KillAuraSettings {
         PLAYERS, ANIMALS, MOBS, INVISIBLES;
         public String displayName() { return name(); }
     }
+    public enum Selection implements DisplayNamed {
+        SINGLE, SWITCH, DYNAMIC;
+        public String displayName(){return name();}
+    }
     public enum Sort implements DisplayNamed {
         FOV, HEALTH, DISTANCE;
         public String displayName() { return name(); }
@@ -22,11 +26,11 @@ public final class KillAuraSettings {
         public String displayName() { return name(); }
     }
     public enum ClickPattern implements DisplayNamed {
-        BASIC, ADVANCED, LATEST;
+        BASIC, ADVANCED, LATEST, HURT_TIME;
         public String displayName() { return name(); }
     }
     public enum BlockMode implements DisplayNamed {
-        PRE, POST, WATCHDOG, FAKE, SPOOF;
+        PRE, POST, WATCHDOG, FAKE, SPOOF, INVALID;
         public String displayName() { return name(); }
     }
     public enum ClickBlockMode implements DisplayNamed {
@@ -34,7 +38,8 @@ public final class KillAuraSettings {
         public String displayName() { return name(); }
     }
     public final FloatSetting aimReach, reach, fov, rotationSpeed, circularSpeed, randomizationAmount;
-    public final IntegerSetting cps;
+    public final IntegerSetting cps, switchDelay;
+    public final EnumSetting<Selection> selection;
     public final BooleanSetting velocityAttackSync, rotate, correctMovement, silentlyCorrect,
         onlyRotateWhenNeeded, dontRotateInHitbox, preventBackSnap, doubleClicks,
         balancedDeviation, forceClickOnTickbase, realClick, ignoreBlocking, stopSprintOnAttack, autoBlock,
@@ -54,6 +59,8 @@ public final class KillAuraSettings {
         cps = IntegerSetting.builder("cps", hooks).configure("CPS", 8, 1, 20, 1).build();
         velocityAttackSync = flag(hooks, "velocity-attack-sync", "Attack sync with velocity", false);
         targets = MultiChoiceSetting.builder("targets", TargetKind.class, hooks).configure("Targets", TargetKind.PLAYERS).build();
+        selection=EnumSetting.builder("selection-mode",Selection.class,hooks).configure("Selection Mode",Selection.SINGLE).build();
+        switchDelay=IntegerSetting.builder("switch-delay",hooks).configure("Switch Delay",50,0,1000,50).visibility(()->selection.get()==Selection.SWITCH).build();
         sorting = EnumSetting.builder("sorting-type", Sort.class, hooks).configure("Sorting Mode", Sort.FOV).build();
         rotate = flag(hooks, "rotate", "Rotate", true);
         correctMovement = flag(hooks, "correct-movement", "Correct movement", false);
@@ -84,7 +91,7 @@ public final class KillAuraSettings {
         aggressive = BooleanSetting.builder("wd-ab-aggressive", hooks).configure("Aggressive", false)
             .visibility(() -> autoBlock.get() && !clickAutoBlock.get() && blockMode.get() == BlockMode.WATCHDOG).build();
         roots = List.of(aimReach, reach, cps,
-            SettingGroup.builder(hooks).configure("Target Settings", targets, sorting, fov).build(),
+            SettingGroup.builder(hooks).configure("Target Settings", targets, selection, switchDelay, sorting, fov).build(),
             SettingGroup.builder(hooks).configure("Rotation Settings", rotate, correctMovement, silentlyCorrect, rotationSpeed,
                 preventBackSnap, onlyRotateWhenNeeded, dontRotateInHitbox, randomization, randomizationAmount, circularSpeed).build(),
             SettingGroup.builder(hooks).configure("Attack Settings", clickPattern, doubleClicks, balancedDeviation, forceClickOnTickbase,

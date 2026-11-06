@@ -518,7 +518,7 @@ public class EntityPlayerSP extends AbstractClientPlayer {
 		final boolean flag2 = this.movementInput.moveForward >= f;
 		this.movementInput.updatePlayerMoveState();
         moon.client.McpModuleServices.playerAfterInput(this);
-		if (this.isUsingItem() && !this.isRiding()) {
+		if (this.isUsingItem() && !this.isRiding() && !moon.client.McpModuleServices.cancelItemSlowdown(this)) {
 			this.movementInput.moveStrafe *= 0.2F;
 			this.movementInput.moveForward *= 0.2F;
 			this.sprintToggleTimer = 0;

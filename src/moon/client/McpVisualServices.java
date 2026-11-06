@@ -370,12 +370,7 @@ public final class McpVisualServices implements AutoCloseable,SettingWidgetFacto
         if(pointers.enabled()){pointers.prepare(partialTicks);pointers.draw();}
     }
     private net.minecraft.entity.EntityLivingBase targetHudTarget(){
-        if(nativeModules!=null&&nativeModules.myau.killAura.enabled())return nativeModules.myau.target();
-        if(nativeModules==null||mc.theWorld==null||!nativeModules.killAura.enabled())return null;
-        var target=nativeModules.killAura.target();
-        if(target==null)return null;
-        net.minecraft.entity.Entity entity=mc.theWorld.getEntityByID(target.id());
-        return entity instanceof net.minecraft.entity.EntityLivingBase living?living:null;
+        return nativeModules == null ? null : nativeModules.combatTarget();
     }
     private void prepareNativeOverlay(){
         if(effectsEnabled&&effectsSettings.shadowEnabled.get())post.requestShadowUpdate();

@@ -30,6 +30,9 @@ public final class KillAuraClickScheduler {
      * zero-delay follow-ups. Block callbacks surround the entire batch once.
      */
     public void cycle(KillAuraSettings settings,long now,RandomGenerator random,int hurtResistantTime,double heldItemAttackSpeed,Runnable before,Runnable attack,Runnable after) {
+        cycle(settings,now,random,hurtResistantTime,0,heldItemAttackSpeed,before,attack,after);
+    }
+    public void cycle(KillAuraSettings settings,long now,RandomGenerator random,int hurtResistantTime,int targetHurtResistantTime,double heldItemAttackSpeed,Runnable before,Runnable attack,Runnable after) {
         int cps=settings.cps.get();
         if(now>=nextSample||cps!=previousCps) {
             sampleCps=between(random,Math.max(1,cps-3),Math.min(settings.doubleClicks.get()?23:20,cps+4));
@@ -41,12 +44,14 @@ public final class KillAuraClickScheduler {
         if(!skipNextCycle) {
             // Original 425 runs once; the back-edge 619 -> 437 is after this write.
             if(settings.velocityAttackSync.get()&&hurtResistantTime>=policy.velocityHurtThreshold())delay=0;
-            while(ticks>=delay) {
+            boolean hurtMode=settings.clickPattern.get()==ClickPattern.HURT_TIME;
+            boolean hurtAllowed=hurtMode&&(targetHurtResistantTime!=0||ticks>=delay)&&targetHurtResistantTime<=14;
+            while(hurtMode?hurtAllowed:ticks>=delay) {
                 if(!eligible) { suppressed=false;break; }
                 attack.run();
                 previousDelay=delay;
-                delay=nextDelay(settings,random,settings.doubleClicks.get()&&previousDelay>0,heldItemAttackSpeed);
-                ticks=0;
+                delay=nextDelay(settings,random,settings.doubleClicks.get()&&previousDelay>0&&!hurtAllowed,heldItemAttackSpeed);
+                ticks=0;hurtAllowed=false;
             }
         }
         skipNextCycle=false;

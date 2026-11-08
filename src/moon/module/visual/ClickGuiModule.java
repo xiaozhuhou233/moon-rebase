@@ -12,8 +12,8 @@ import moon.visual.gui.DisplayNamed;
  */
 public final class ClickGuiModule {
     public enum Mode implements DisplayNamed {
-        DEFAULT, IM_GUI, MODERN;
-        public String displayName() { return this==IM_GUI?"ImGui":this==MODERN?"Modern":"Default"; }
+        DEFAULT, IM_GUI, MODERN, MATERIAL;
+        public String displayName() { return this==IM_GUI?"ImGui":this==MODERN?"Modern":this==MATERIAL?"Material":"Default"; }
     }
     /** a3/a0/a2 labels decoded from their original tables using an offline seed model;
      * these are not runtime string captures. Enum order is confirmed by classfiles. */
@@ -28,6 +28,11 @@ public final class ClickGuiModule {
     public enum ModuleDesign implements DisplayNamed {
         ROUNDED("Rounded"), STACKED("Stacked");
         private final String label;ModuleDesign(String label){this.label=label;}public String displayName(){return label;}
+    }
+    public enum Palette implements DisplayNamed {
+        PURPLE_LIGHT("Purple Light"), BLUE_LIGHT("Blue Light"), GREEN_LIGHT("Green Light"),
+        PURPLE_DARK("Purple Dark"), BLUE_DARK("Blue Dark"), GREEN_DARK("Green Dark");
+        private final String label;Palette(String label){this.label=label;}public String displayName(){return label;}
     }
     public static final Mode DEFAULT_MODE = Mode.MODERN;
     public static final boolean DEFAULT_OPEN_ANIMATION = true;
@@ -50,6 +55,7 @@ public final class ClickGuiModule {
     public interface Backend {
         NativeScreen createNativeScreen(ClickGuiModule module);
         default NativeScreen createModernScreen(ClickGuiModule module){throw new UnsupportedOperationException("Modern backend not installed");}
+        default NativeScreen createMaterialScreen(ClickGuiModule module){throw new UnsupportedOperationException("Material backend not installed");}
         Screen createImGuiScreen();
         Object currentScreen();
         void displayScreen(Screen screen);
@@ -62,7 +68,7 @@ public final class ClickGuiModule {
     private final Backend backend;
     private final Supplier<Mode> mode;
     private final BooleanSupplier originalGuardIsNull;
-    private NativeScreen nativeScreen,modernScreen;
+    private NativeScreen nativeScreen,modernScreen,materialScreen;
     private Screen imGuiScreen;
     private Object uiColor;
 
@@ -89,6 +95,10 @@ public final class ClickGuiModule {
                 if(modernScreen==null){modernScreen=backend.createModernScreen(this);modernScreen.initialize();}
                 backend.displayScreen(modernScreen);
                 break;
+            case MATERIAL:
+                if(materialScreen==null){materialScreen=backend.createMaterialScreen(this);materialScreen.initialize();}
+                backend.displayScreen(materialScreen);
+                break;
             case DEFAULT: // gS switch arm 2 -> pj, original material tree.
                 if(nativeScreen==null) {
                     nativeScreen=backend.createNativeScreen(this);
@@ -112,6 +122,7 @@ public final class ClickGuiModule {
         // reaches the original null receiver invocation and its exception.
         if(current==nativeScreen&&nativeScreen!=null) nativeScreen.onOriginalDl();
         else if(current==modernScreen&&modernScreen!=null)modernScreen.onOriginalDl();
+        else if(current==materialScreen&&materialScreen!=null)materialScreen.onOriginalDl();
     }
 
     public void onOriginalDm(Object event) {
@@ -125,18 +136,21 @@ public final class ClickGuiModule {
         // reaches the original null receiver invocation and its exception.
         if(current==nativeScreen&&nativeScreen!=null) nativeScreen.onOriginalDm(event);
         else if(current==modernScreen&&modernScreen!=null)modernScreen.onOriginalDm(event);
+        else if(current==materialScreen&&materialScreen!=null)materialScreen.onOriginalDm(event);
     }
 
     public void onColorChanged(Integer previousValue,Integer newValue) {
         boolean normal=originalGuardIsNull.getAsBoolean();
         if(normal && nativeScreen!=null) nativeScreen.onColorSettingChanged();
         if(normal && modernScreen!=null) modernScreen.onColorSettingChanged();
+        if(normal && materialScreen!=null) materialScreen.onColorSettingChanged();
         uiColor=backend.createUiColor(newValue.intValue());
         backend.applyGlobalColor(newValue.intValue());
     }
 
     public NativeScreen getNativeScreen(){return nativeScreen;}
     public NativeScreen getModernScreen(){return modernScreen;}
+    public NativeScreen getMaterialScreen(){return materialScreen;}
     public Screen getImGuiScreen(){return imGuiScreen;}
     public Object getUiColor(){return uiColor;}
 

@@ -15,9 +15,19 @@
         <lwjgl.version>3.3.6</lwjgl.version>
         <imgui.version>1.86.11</imgui.version>
         <lombok.version>1.18.34</lombok.version>
+        <kotlin.version>2.1.21</kotlin.version>
+        <compose.version>1.8.2</compose.version>
     </properties>
 
     <repositories>
+        <repository>
+            <id>central</id>
+            <url>https://repo.maven.apache.org/maven2/</url>
+        </repository>
+        <repository>
+            <id>google</id>
+            <url>https://dl.google.com/dl/android/maven2/</url>
+        </repository>
         <repository>
             <id>minecraft</id>
             <url>https://libraries.minecraft.net</url>
@@ -26,6 +36,26 @@
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>androidx.annotation</groupId>
+                <artifactId>annotation-jvm</artifactId>
+                <version>1.9.1</version>
+            </dependency>
+            <dependency>
+                <groupId>androidx.annotation</groupId>
+                <artifactId>annotation</artifactId>
+                <version>1.8.0</version>
+            </dependency>
+            <dependency>
+                <groupId>androidx.collection</groupId>
+                <artifactId>collection-jvm</artifactId>
+                <version>1.5.0</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jetbrains.kotlin</groupId>
+                <artifactId>kotlin-stdlib</artifactId>
+                <version>${kotlin.version}</version>
+            </dependency>
             <dependency>
                 <groupId>org.lwjgl</groupId>
                 <artifactId>lwjgl-bom</artifactId>
@@ -37,6 +67,28 @@
     </dependencyManagement>
 
     <dependencies>
+        <!-- Desktop Compose is used by the opt-in Material 3 component preview. -->
+        <dependency>
+            <groupId>org.jetbrains.compose.ui</groupId>
+            <artifactId>ui-desktop</artifactId>
+            <version>${compose.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jetbrains.compose.material3</groupId>
+            <artifactId>material3-desktop</artifactId>
+            <version>${compose.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jetbrains.kotlin</groupId>
+            <artifactId>kotlin-stdlib</artifactId>
+            <version>${kotlin.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jetbrains.skiko</groupId>
+            <artifactId>skiko-awt-runtime-windows-x64</artifactId>
+            <version>0.9.4.2</version>
+            <scope>runtime</scope>
+        </dependency>
         <!-- ImGui destination backend; LWJGL stays managed by the existing 3.3.6 BOM. -->
         <dependency>
             <groupId>io.github.spair</groupId>
@@ -274,6 +326,34 @@
         </resources>
 
         <plugins>
+            <plugin>
+                <groupId>org.jetbrains.kotlin</groupId>
+                <artifactId>kotlin-maven-plugin</artifactId>
+                <version>${kotlin.version}</version>
+                <executions>
+                    <execution>
+                        <id>compose-kotlin-compile</id>
+                        <phase>process-sources</phase>
+                        <goals><goal>compile</goal></goals>
+                        <configuration>
+                            <sourceDirs>
+                                <sourceDir>${project.basedir}/src/moon/compose</sourceDir>
+                            </sourceDirs>
+                            <jvmTarget>17</jvmTarget>
+                            <args>
+                                <arg>-Xplugin=${settings.localRepository}/org/jetbrains/kotlin/kotlin-compose-compiler-plugin/${kotlin.version}/kotlin-compose-compiler-plugin-${kotlin.version}.jar</arg>
+                            </args>
+                        </configuration>
+                    </execution>
+                </executions>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.jetbrains.kotlin</groupId>
+                        <artifactId>kotlin-compose-compiler-plugin</artifactId>
+                        <version>${kotlin.version}</version>
+                    </dependency>
+                </dependencies>
+            </plugin>
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>

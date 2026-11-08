@@ -67,6 +67,14 @@ public final class McpBindings {
         catch(IOException failure){feedback.accept("Bind not saved: "+failure.getMessage());}
         return true;
     }
+    String keyLabel(ModuleRowWidget.Module module){int k=key(module);return k<=0?"":String.valueOf(Keyboard.getKeyName(k));}
+    void bind(ModuleRowWidget.Module module,int key){
+        Map<String,Integer> next=new TreeMap<>(keys);
+        boolean remove=key<=0||key>=256;
+        if(remove)next.remove(module.bindId());else next.put(module.bindId(),key);
+        try{save(next);keys.clear();keys.putAll(next);feedback.accept(module.displayName()+" bound to "+(remove?"NONE":Keyboard.getKeyName(key)));}
+        catch(IOException failure){feedback.accept("Bind not saved: "+failure.getMessage());}
+    }
     static boolean isCommand(String message){
         String s=message.stripLeading();return s.length()>=5&&s.regionMatches(true,0,".bind",0,5)&&(s.length()==5||Character.isWhitespace(s.charAt(5)));
     }

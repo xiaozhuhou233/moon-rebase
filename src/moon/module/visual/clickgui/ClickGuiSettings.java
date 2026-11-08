@@ -19,6 +19,7 @@ public final class ClickGuiSettings implements NativeClickGuiScreen.Config,Categ
     public final EnumSetting<OpeningType> openingType;
     public final EnumSetting<ClosingType> closingType;
     public final EnumSetting<ModuleDesign> moduleDesign;
+    public final EnumSetting<Palette> palette;
     public final ColorSetting color;
     public final moon.visual.render.ShadowStyle shadowColor;
     private final Map<String,SettingValue<?>> fields=new LinkedHashMap<>();
@@ -40,9 +41,12 @@ public final class ClickGuiSettings implements NativeClickGuiScreen.Config,Categ
         moduleDesign=record("A",EnumSetting.builder("module-design-type",ModuleDesign.class,markers).configure("Module Design",ModuleDesign.STACKED).visibility(()->mode.get()==Mode.DEFAULT).build());
         center=record("nightly.B",BooleanSetting.builder("center",markers).configure("Center",false).visibility(()->mode.get()==Mode.MODERN).build());
         postProcessing=record("nightly.C",BooleanSetting.builder("post-processing",markers).configure("Post Processing",true).visibility(()->mode.get()==Mode.MODERN).build());
-        scale=record("nightly.D",FloatSetting.builder("scale",markers).configure("Scale",1F,.5F,2F,.1F).visibility(()->mode.get()==Mode.MODERN).build());
+        scale=record("nightly.D",FloatSetting.builder("scale",markers).configure("Scale",1F,.5F,2F,.1F)
+            .visibility(()->mode.get()==Mode.MODERN||mode.get()==Mode.MATERIAL).build());
         color=record("B",ColorSetting.builder("color",markers).configure("Color",ClickGuiModule.DEFAULT_COLOR_SETTING)
             .callback(module::onColorChanged).build());
+        palette=record("nightly.E",EnumSetting.builder("palette",Palette.class,markers).configure("Palette",Palette.PURPLE_LIGHT)
+            .visibility(()->mode.get()==Mode.MATERIAL).build());
     }
     private Mode selectedMode(){return mode.get();}
     private <T extends SettingValue<?>> T record(String field,T value){fields.put(field,value);return value;}

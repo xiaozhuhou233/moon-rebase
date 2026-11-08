@@ -99,6 +99,7 @@ public final class McpVisualServices implements AutoCloseable,SettingWidgetFacto
     public NametagsModule nametags;
     private ModalButton closeButton;
     private McpClickGuiScreen nativeScreen,modernScreen;
+    private ClickGuiModule.NativeScreen materialScreen;
     private ModernGuiPostProcessor modernPost;
     private McpClickGuiScreen currentNativeScreen(){return mc.currentScreen instanceof McpClickGuiScreen s?s:null;}
     private McpImGuiBackend imGui;
@@ -120,6 +121,7 @@ public final class McpVisualServices implements AutoCloseable,SettingWidgetFacto
                 created::effectsEnabled,created::hudEnabled,created::tick,created::tickPost,created::resize,created,
                 ticks->{active.glow.worldPost(ticks);active.nativeModules.backtrack.render();moon.client.McpModuleServices.renderScaffold(ticks);},created::overlayPre,created::prepareNativeOverlay,created::drawNativeOverlay,created::maskNativeOverlay));
             instance=created;LOG.info("Visual services initialized: {} (Right Shift opens ClickGUI)",created.profile.ID);
+            try{moon.compose.Material3GameScene.prewarm(null);}catch(Throwable warmup){LOG.warn("Material prewarm skipped",warmup);}
         }catch(Exception|Error failure){
             if(created!=null)try{created.close();}catch(Exception cleanup){failure.addSuppressed(cleanup);}
             throw new IllegalStateException("Moon visual service initialization failed",failure);
@@ -237,6 +239,9 @@ public final class McpVisualServices implements AutoCloseable,SettingWidgetFacto
                 public ClickGuiModule.NativeScreen createModernScreen(ClickGuiModule module){
                     return modernScreen=new McpClickGuiScreen(McpVisualServices.this,clickSettings,profile.screen,System::currentTimeMillis,true);
                 }
+                public ClickGuiModule.NativeScreen createMaterialScreen(ClickGuiModule module){
+                    return materialScreen=new McpMaterialClickGuiScreen(McpVisualServices.this);
+                }
                 public ClickGuiModule.Screen createImGuiScreen(){
                     if(imGui==null)imGui=new McpImGuiBackend(mc.mcDataDir.toPath());
                     return new McpImGuiScreen(McpVisualServices.this,imGui);
@@ -303,6 +308,8 @@ public final class McpVisualServices implements AutoCloseable,SettingWidgetFacto
             visualModules.add(esp);
             visualModules.add(richPresence);
             visualModules.add(new VisualModule("ClickGUI",clickSettings.roots(),()->currentNativeScreen()!=null,()->clickSettings.module().openSelectedScreen()));
+            visualModules.add(new VisualModule("Material3 Debug",List.of(),()->mc.currentScreen instanceof McpMaterial3Screen,
+                ()->McpMaterial3Screen.open(mc)));
             closeButton=ModalButton.sharedClose(this,"Close");
             config=new McpVisualConfigStore(mc.mcDataDir.toPath().resolve("moon/visual-config.json"));
             config.bind("effects",effectsSettings.roots(),()->effectsEnabled,value->effectsEnabled=value);
@@ -362,6 +369,7 @@ public final class McpVisualServices implements AutoCloseable,SettingWidgetFacto
         if(config!=null)try{config.poll(System.currentTimeMillis());}catch(IOException|RuntimeException failure){LOG.error("Could not save visual settings",failure);}
         if(luaModules.refresh(scriptModules))for(McpClickGuiScreen screen:new McpClickGuiScreen[]{nativeScreen,modernScreen})
             if(screen!=null&&screen.controller().getScriptsPanel()!=null)screen.controller().getScriptsPanel().initialize();
+        if(materialScreen!=null)materialScreen.initialize();
         bindings.reconcileHeld(Keyboard::isKeyDown);
     }
     private void tickPost(){timeChanger.tick();camera.tick();hud.tickPost();}

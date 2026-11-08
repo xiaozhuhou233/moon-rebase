@@ -131,13 +131,24 @@ public final class MoonScaffoldModule extends NativeModule {
             Vec3 center=new Vec3((float)at.getX()+.5F,(float)at.getY()+.5F,(float)at.getZ()+.5F);
             double d=mc.thePlayer.getPositionVector().distanceTo(center);if(d<=radius.get()&&d<nearest){nearest=d;best=at;}
         }
-        support=best;face=best==null?null:EnumFacing.getFacingFromVector(origin.getX()-best.getX(),origin.getY()-best.getY(),origin.getZ()-best.getZ());
+        support=best;face=best==null?null:supportFace(origin.getX()-best.getX(),origin.getY()-best.getY(),origin.getZ()-best.getZ());
     }
+    /** Vanilla nearest-axis selection; MCP's ENUM_FACING_FIX returns null for diagonal vectors. */
+    static EnumFacing supportFace(float x,float y,float z){
+        EnumFacing selected=EnumFacing.NORTH;
+        float best=Float.MIN_VALUE;
+        for(EnumFacing candidate:EnumFacing.values()){
+            float score=x*candidate.getFrontOffsetX()+y*candidate.getFrontOffsetY()+z*candidate.getFrontOffsetZ();
+            if(score>best){best=score;selected=candidate;}
+        }
+        return selected;
+    }
+    private boolean hasSupport(){return support!=null&&face!=null;}
     public void tick(){
         if(!active())return;if(world!=mc.theWorld||connection!=mc.getNetHandler()){reset();begin();}if(originalSlot<0)begin();
         var p=mc.thePlayer;if(plannedTick==p.ticksExisted)return;plannedTick=p.ticksExisted;selectBlock();
         if(p.onGround||(tower.get()&&mc.gameSettings.keyBindJump.isKeyDown()&&!moving())||!(keepY.get()&&moving()))level=Math.floor(p.getEntityBoundingBox().minY);
-        if(shouldSearch()){search();if(needsRotation()&&support!=null)solve();}else{support=null;face=null;}
+        if(shouldSearch()){search();if(needsRotation()&&hasSupport())solve();}else{support=null;face=null;}
         float oldYaw=yaw,oldPitch=pitch;yaw=KillAuraRotations.approach(yaw,desiredYaw,rotationSpeed.get());pitch=KillAuraRotations.approach(pitch,desiredPitch,rotationSpeed.get());
         if(sensitivity.get()){float step=(float)(Math.pow(mc.gameSettings.mouseSensitivity*.6F+.2F,3)*8*.15);yaw=oldYaw+Math.round((yaw-oldYaw)/step)*step;pitch=oldPitch+Math.round((pitch-oldPitch)/step)*step;}
         pitch=MathHelper.clamp_float(pitch,-90,90);
@@ -146,8 +157,9 @@ public final class MoonScaffoldModule extends NativeModule {
         Vec3 eye=mc.thePlayer.getPositionEyes(1);double yr=Math.toRadians(y),pr=Math.toRadians(p);
         return mc.theWorld.rayTraceBlocks(eye,eye.addVector(-Math.sin(yr)*Math.cos(pr)*4.5,-Math.sin(pr)*4.5,Math.cos(yr)*Math.cos(pr)*4.5),false,false,true);
     }
-    private boolean hits(float y,float p){MovingObjectPosition hit=ray(y,p);return hit!=null&&hit.typeOfHit==MovingObjectPosition.MovingObjectType.BLOCK&&support.equals(hit.getBlockPos())&&face==hit.sideHit;}
+    private boolean hits(float y,float p){if(!hasSupport())return false;MovingObjectPosition hit=ray(y,p);return hit!=null&&hit.typeOfHit==MovingObjectPosition.MovingObjectType.BLOCK&&support.equals(hit.getBlockPos())&&face==hit.sideHit;}
     private void solve(){
+        if(!hasSupport())return;
         var p=mc.thePlayer;Vec3 eye=p.getPositionEyes(1);Vec3 point=new Vec3(support).addVector(.5+face.getFrontOffsetX()*.5,.5+face.getFrontOffsetY()*.5,.5+face.getFrontOffsetZ()*.5);
         if(middlePoint.get()){if(face.getAxis()==EnumFacing.Axis.X&&Math.abs(point.zCoord-eye.zCoord)<=.5)eye=new Vec3(eye.xCoord,eye.yCoord,point.zCoord);if(face.getAxis()==EnumFacing.Axis.Z&&Math.abs(point.xCoord-eye.xCoord)<=.5)eye=new Vec3(point.xCoord,eye.yCoord,eye.zCoord);}
         double dx=(float)point.xCoord-(float)eye.xCoord,dy=(float)point.yCoord-(float)eye.yCoord,dz=(float)point.zCoord-(float)eye.zCoord;
@@ -184,12 +196,12 @@ public final class MoonScaffoldModule extends NativeModule {
     }
     public void place(){
         if(!active())return;var p=mc.thePlayer;
-        if(shouldSearch()&&support!=null&&selectedSlot>=0){
+        if(shouldSearch()&&hasSupport()&&selectedSlot>=0){
             for(int attempt=0;attempt<3;attempt++){
                 if(raytrace.get()&&!hits(yaw,pitch))break;MovingObjectPosition hit=ray(yaw,pitch);Vec3 point=hit==null?new Vec3(support):hit.hitVec;
                 ItemStack held=p.getHeldItem();if(!valid(held))break;
                 if(mc.playerController.onPlayerRightClick(p,mc.theWorld,held,support,face,point)){placements++;placed=true;towerPlaced=true;if(swing.get())p.swingItem();else p.sendQueue.addToSendQueue(new C0APacketAnimation());}
-                if(supported())break;search();if(support==null)break;
+                if(supported())break;search();if(!hasSupport())break;
             }
             if(p.onGround&&!supported()&&safeWalkMode.get()==SafeWalk.JUMP)p.jump();
             if(sneak.isSelected(Sneak.EDGE))requestSneak();if(unsprint.get())stopSprint();
